@@ -45,3 +45,5 @@ class BeliefNode:
             "action": action,
             "timestamp": timestamp
         })
+        if len(self.history) > 5:
+            self.history.pop(0)
