@@ -58,7 +58,7 @@ class BeliefGraph:
         belief_node.add_history(action)
         self.graph.nodes[node_id] = belief_node.to_dict()
 
-    def get_node(self, node_id: str) -> Optional[Dict]:
+    def get_node(self, node_id: str) -> Optional[BeliefNode]:
         return BeliefNode.from_dict(self.graph.nodes[node_id])
 
     def get_nodes(self) -> List[Dict]:
