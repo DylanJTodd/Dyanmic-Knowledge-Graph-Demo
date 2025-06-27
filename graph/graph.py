@@ -84,6 +84,12 @@ class BeliefGraph:
     def from_json(self, json_str: str):
         data = json.loads(json_str)
         self.graph = nx.readwrite.json_graph.node_link_graph(data)
+        
+    def to_dict(self) -> Dict:
+        return {
+            "nodes": self.get_nodes(),
+            "edges": self.get_edges()
+        }
 
     def save_to_file(self, file_path: str):
         with open(file_path, 'w') as f:
