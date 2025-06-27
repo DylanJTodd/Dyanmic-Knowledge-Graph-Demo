@@ -34,7 +34,7 @@ class BeliefGraph:
             if hasattr(belief_node, item):
                 setattr(belief_node, item, value)
 
-        self.graph.nodes[node_id] = belief_node.to_dict()
+        self.graph.nodes[node_id].update(belief_node.to_dict())
 
     def add_edge(self, from_node_id: str, to_node_id: str, label: str):
         assert from_node_id and to_node_id, "Both from_node and to_node must be specified."
@@ -59,7 +59,7 @@ class BeliefGraph:
         self.graph.nodes[node_id] = belief_node.to_dict()
 
     def get_node(self, node_id: str) -> Optional[Dict]:
-        return self.graph.nodes.get(node_id, None)
+        return BeliefNode.from_dict(self.graph.nodes[node_id])
 
     def get_nodes(self) -> List[Dict]:
         return [
