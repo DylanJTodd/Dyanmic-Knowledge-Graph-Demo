@@ -112,8 +112,22 @@ class BeliefGraph:
             self.from_json(f.read())
         self.validate_graph()
 
-    def get_neighbors(self, node_id: str) -> List[str]:
-        return list(self.graph.predecessors(node_id)) + list(self.graph.successors(node_id))
+    def get_neighbors(self, node_id: str, as_objects: bool = True) -> List[BeliefNode]:
+        assert node_id, "Node ID must be specified."
+        if not self.graph.has_node(node_id):
+            raise ValueError(f"Node {node_id} does not exist.")
+
+        neighbor_ids = set(self.graph.predecessors(node_id)).union(self.graph.successors(node_id))
+
+        if as_objects:
+            return [
+                BeliefNode.from_dict(self.graph.nodes[n_id]) for n_id in neighbor_ids
+            ]
+        else:
+            return [
+                {"id": n_id, **self.graph.nodes[n_id]} for n_id in neighbor_ids
+            ]
+
 
     def has_node(self, node_id: str) -> bool:
         return self.graph.has_node(node_id)
