@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 class BeliefNode:
-    def __init__(self, label, belief_type, confidence, node_id=None, history=None):
+    def __init__(self, label: str, belief_type: str, confidence: float, node_id: str = None, history: list = None):
         self.id = node_id
         self.label = label
         self.type = belief_type
@@ -41,8 +41,8 @@ class BeliefNode:
             history=data.get("history"),
             node_id=data["id"]
         )
-    
-    def add_history(self, action):
+
+    def add_history(self, action: str):
         timestamp = datetime.now().isoformat()
         self.history.append({
             "action": action,
