@@ -6,14 +6,22 @@ from graph.node import BeliefNode
 class BeliefGraph:
     def __init__(self):
         self.graph = nx.MultiDiGraph()
+        self.node_counter = 0
 
     def add_node(self, node: BeliefNode):
         assert node, "Node cannot be empty."
         assert isinstance(node, BeliefNode), "Node must be an instance of BeliefNode."
 
+        node_id = f"belief_{self.node_counter}"
+        self.node_counter += 1
+        node.id = node_id
+
         if self.graph.has_node(node.id):
             raise ValueError(f"Node with id {node.id} already exists.")
+
         self.graph.add_node(node.id, **node.to_dict())
+        return node_id
+
 
     def update_node(self, node_id: str, **updates):
         '''
@@ -109,8 +117,13 @@ class BeliefGraph:
         }
 
     def save_to_file(self, file_path: str):
+        state = {
+            "graph": nx.readwrite.json_graph.node_link_data(self.graph),
+            "node_counter": self.node_counter
+        }
         with open(file_path, 'w') as f:
-            f.write(self.to_json())
+            f.write(json.dumps(state))
+
 
     def validate_graph(self):
         for node_id, data in self.graph.nodes(data=True):
@@ -126,7 +139,9 @@ class BeliefGraph:
 
     def load_from_file(self, file_path: str):
         with open(file_path, 'r') as f:
-            self.from_json(f.read())
+            state = json.load(f)
+            self.graph = nx.readwrite.json_graph.node_link_graph(state["graph"])
+            self.node_counter = state.get("node_counter", 0)
         self.validate_graph()
 
     def get_neighbors(self, node_id: str, as_objects: bool = True) -> List[BeliefNode]:

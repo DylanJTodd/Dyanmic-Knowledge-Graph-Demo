@@ -3,7 +3,7 @@ from datetime import datetime
 
 class BeliefNode:
     def __init__(self, label, belief_type, confidence, node_id=None, history=None):
-        self.id = node_id if node_id else str(uuid.uuid4())
+        self.id = node_id
         self.label = label
         self.type = belief_type
         self.confidence = confidence
