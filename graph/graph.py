@@ -23,10 +23,18 @@ class BeliefGraph:
         }
         '''
         assert node_id, "Node ID must be specified."
-
+        assert updates, "Updates cannot be empty."
         if not self.graph.has_node(node_id):
             raise ValueError("Node does not exist.")
-        self.graph.nodes[node_id].update(updates)
+
+        node_data = self.graph.nodes[node_id]
+        belief_node = BeliefNode.from_dict(node_data)
+
+        for item, value in updates.items():
+            if hasattr(belief_node, item):
+                setattr(belief_node, item, value)
+
+        self.graph.nodes[node_id] = belief_node.to_dict()
 
     def add_edge(self, from_node_id: str, to_node_id: str, label: str):
         assert from_node_id and to_node_id, "Both from_node and to_node must be specified."
@@ -35,6 +43,8 @@ class BeliefGraph:
             raise ValueError(f"From node {from_node_id} does not exist.")
         if not self.graph.has_node(to_node_id):
             raise ValueError(f"To node {to_node_id} does not exist.")
+        if self.graph.has_edge(from_node_id, to_node_id, key=label):
+            raise ValueError(f"Edge from {from_node_id} to {to_node_id} with label '{label}' already exists.")
 
         self.graph.add_edge(from_node_id, to_node_id, key=label)
 
@@ -79,9 +89,22 @@ class BeliefGraph:
         with open(file_path, 'w') as f:
             f.write(self.to_json())
 
+    def validate_graph(self):
+        for node_id, data in self.graph.nodes(data=True):
+            try:
+                BeliefNode.from_dict(data)
+            except Exception as e:
+                raise ValueError(f"Node {node_id} failed validation: {e}")
+            
+        for u, v, k, d in self.graph.edges(keys=True, data=True):
+            if not isinstance(k, str):
+                raise ValueError(f"Edge label (key) must be a string between {u} and {v}")
+        
+
     def load_from_file(self, file_path: str):
         with open(file_path, 'r') as f:
             self.from_json(f.read())
+        self.validate_graph()
 
     def get_neighbors(self, node_id: str) -> List[str]:
         return list(self.graph.predecessors(node_id)) + list(self.graph.successors(node_id))
