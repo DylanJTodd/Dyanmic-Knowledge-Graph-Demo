@@ -130,15 +130,19 @@ class BeliefGraph:
 
 
     def has_node(self, node_id: str) -> bool:
+        assert node_id, "Node ID must be specified."
         return self.graph.has_node(node_id)
 
     def has_edge(self, from_node: str, to_node: str, label: str) -> bool:
+        assert from_node and to_node, "Both from_node and to_node must be specified."
         return self.graph.has_edge(from_node, to_node, key=label)
 
     def remove_node(self, node_id: str):
+        assert node_id, "Node ID must be specified."
         if self.graph.has_node(node_id):
             self.graph.remove_node(node_id)
 
     def remove_edge(self, from_node: str, to_node: str, label: str):
+        assert from_node and to_node, "Both from_node and to_node must be specified."
         if self.graph.has_edge(from_node, to_node, key=label):
             self.graph.remove_edge(from_node, to_node, key=label)
