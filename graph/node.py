@@ -2,8 +2,8 @@ import uuid
 from datetime import datetime
 
 class BeliefNode:
-    def __init__(self, label, belief_type, confidence):
-        self.id = str(uuid.uuid4())
+    def __init__(self, label, belief_type, confidence, node_id=None):
+        self.id = node_id if node_id else str(uuid.uuid4())
         self.label = label
         self.type = belief_type
         self.confidence = confidence
