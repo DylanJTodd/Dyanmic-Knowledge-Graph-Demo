@@ -1,0 +1,47 @@
+import uuid
+from datetime import datetime
+
+class BeliefNode:
+    def __init__(self, label, belief_type, confidence):
+        self.id = str(uuid.uuid4())
+        self.label = label
+        self.type = belief_type
+        self.confidence = confidence
+        self.history = []
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "label": self.label,
+            "type": self.type,
+            "confidence": self.confidence,
+            "history": self.history
+        }
+
+    @staticmethod
+    def from_dict(data):
+        if not isinstance(data, dict):
+            raise ValueError("Input must be a dictionary.")
+        
+        assert "id" in data, "Node must have an 'id' field."
+        assert "label" in data, "Node must have a 'label' field."
+        assert "type" in data, "Node must have a 'type' field."
+        assert "confidence" in data, "Node must have a 'confidence' field."
+
+        if "history" not in data:
+            data["history"] = []
+
+        return BeliefNode(
+            label=data["label"],
+            belief_type=data.get("type"),
+            confidence=data.get("confidence"),
+            history=data.get("history"),
+            node_id=data["id"]
+        )
+    
+    def add_history(self, action):
+        timestamp = datetime.now().isoformat()
+        self.history.append({
+            "action": action,
+            "timestamp": timestamp
+        })
