@@ -23,11 +23,14 @@ class BeliefNode:
         if not isinstance(data, dict):
             raise ValueError("Input must be a dictionary.")
         
-        assert "id" in data, "Node must have an 'id' field."
-        assert "label" in data, "Node must have a 'label' field."
-        assert "type" in data, "Node must have a 'type' field."
-        assert "confidence" in data, "Node must have a 'confidence' field."
-
+        if "id" not in data:
+            raise ValueError("Node must have an 'id' field.")
+        if "label" not in data:
+            raise ValueError("Node must have a 'label' field.")
+        if "type" not in data:
+            raise ValueError("Node must have a 'type' field.")
+        if "confidence" not in data:
+            raise ValueError("Node must have a 'confidence' field.")
         if "history" not in data:
             data["history"] = []
 
