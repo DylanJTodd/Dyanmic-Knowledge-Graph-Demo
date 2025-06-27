@@ -37,9 +37,11 @@ class BeliefGraph:
         updated_data = {**node_data, **belief_node.to_dict()}
         self.graph.nodes[node_id].update(updated_data)
 
-    def add_edge(self, from_node_id: str, to_node_id: str, label: str):
+    def add_edge(self, from_node_id: str, to_node_id: str, label: str, confidence: float = 1.0, **attrs):
         assert from_node_id and to_node_id, "Both from_node and to_node must be specified."
         assert label, "Edge label must be specified."
+        assert 0.0 <= confidence <= 1.0, "Confidence must be between 0 and 1."
+
         if not self.graph.has_node(from_node_id):
             raise ValueError(f"From node {from_node_id} does not exist.")
         if not self.graph.has_node(to_node_id):
@@ -47,7 +49,21 @@ class BeliefGraph:
         if self.graph.has_edge(from_node_id, to_node_id, key=label):
             raise ValueError(f"Edge from {from_node_id} to {to_node_id} with label '{label}' already exists.")
 
-        self.graph.add_edge(from_node_id, to_node_id, key=label)
+        self.graph.add_edge(from_node_id, to_node_id, key=label, confidence=confidence, **attrs)
+
+    def update_edge_confidence(self, from_node_id: str, to_node_id: str, label: str, new_confidence: float):
+        assert from_node_id and to_node_id, "Both from_node and to_node must be specified."
+        assert label, "Edge label must be specified."
+        assert 0.0 <= new_confidence <= 1.0, "Confidence must be between 0 and 1."
+        
+        if not self.graph.has_node(from_node_id):
+            raise ValueError(f"From node {from_node_id} does not exist.")
+        if not self.graph.has_node(to_node_id):
+            raise ValueError(f"To node {to_node_id} does not exist.")
+        if not self.graph.has_edge(from_node_id, to_node_id, key=label):
+            raise ValueError("Edge not found.")
+
+        self.graph[from_node_id][to_node_id][label]["confidence"] = new_confidence
 
     def add_history(self, node_id: str, action: str):
         assert node_id, "Node ID must be specified."
