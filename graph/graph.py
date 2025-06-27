@@ -15,8 +15,26 @@ class BeliefGraph:
             raise ValueError(f"Node with id {node.id} already exists.")
         self.graph.add_node(node.id, **node.to_dict())
 
+    def update_node(self, node_id: str, **updates):
+        '''
+        **updates = {
+            "confidence": 0.6,
+            "label": "Pain teaches resilience."
+        }
+        '''
+        assert node_id, "Node ID must be specified."
+
+        if not self.graph.has_node(node_id):
+            raise ValueError("Node does not exist.")
+        self.graph.nodes[node_id].update(updates)
+
     def add_edge(self, from_node_id: str, to_node_id: str, label: str):
         assert from_node_id and to_node_id, "Both from_node and to_node must be specified."
+        assert label, "Edge label must be specified."
+        if not self.graph.has_node(from_node_id):
+            raise ValueError(f"From node {from_node_id} does not exist.")
+        if not self.graph.has_node(to_node_id):
+            raise ValueError(f"To node {to_node_id} does not exist.")
 
         self.graph.add_edge(from_node_id, to_node_id, key=label)
 
