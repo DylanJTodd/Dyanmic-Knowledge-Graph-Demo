@@ -1,24 +1,24 @@
 import networkx as nx
 import json
 from typing import List, Dict, Optional
+from graph.node import BeliefNode
 
 class BeliefGraph:
     def __init__(self):
         self.graph = nx.MultiDiGraph()
 
-    def add_node(self, node_id: str, **attrs):
-        assert node_id, "Node ID cannot be empty."
-        assert isinstance(node_id, str), "Node ID must be a string."
+    def add_node(self, node: BeliefNode):
+        assert node, "Node cannot be empty."
+        assert isinstance(node, BeliefNode), "Node must be an instance of BeliefNode."
 
-        if self.graph.has_node(node_id):
-            raise ValueError(f"Node with id {node_id} already exists.")
-        self.graph.add_node(node_id, **attrs)
+        if self.graph.has_node(node.id):
+            raise ValueError(f"Node with id {node.id} already exists.")
+        self.graph.add_node(node.id, **node.to_dict())
 
-    def add_edge(self, from_node: str, to_node: str, label: str, **attrs):
-        assert from_node and to_node, "Both from_node and to_node must be specified."
-        assert isinstance(from_node, str) and isinstance(to_node, str), "Node IDs must be strings."
+    def add_edge(self, from_node_id: str, to_node_id: str, label: str):
+        assert from_node_id and to_node_id, "Both from_node and to_node must be specified."
 
-        self.graph.add_edge(from_node, to_node, key=label, **attrs)
+        self.graph.add_edge(from_node_id, to_node_id, key=label)
 
     def get_node(self, node_id: str) -> Optional[Dict]:
         return self.graph.nodes.get(node_id, None)
