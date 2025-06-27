@@ -38,6 +38,16 @@ class BeliefGraph:
 
         self.graph.add_edge(from_node_id, to_node_id, key=label)
 
+    def add_history(self, node_id: str, action: str):
+        assert node_id, "Node ID must be specified."
+        if not self.graph.has_node(node_id):
+            raise ValueError("Node does not exist.")
+        
+        node = self.graph.nodes[node_id]
+        belief_node = BeliefNode.from_dict(node)
+        belief_node.add_history(action)
+        self.graph.nodes[node_id] = belief_node.to_dict()
+
     def get_node(self, node_id: str) -> Optional[Dict]:
         return self.graph.nodes.get(node_id, None)
 
