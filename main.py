@@ -6,16 +6,21 @@ from api import tools, user_api
 
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")
+FIRST_QUERY = os.getenv("SYSTEM_PROMPT_1")
 
 if not API_KEY:
     raise ValueError("OPENAI_API_KEY not found in environment")
+if not FIRST_QUERY:
+    raise ValueError("SYSTEM_PROMPT_1 not found in environment")
 
 client = OpenAI(api_key=API_KEY)
 function_schemas = [{"type": "function", "function": schema} for schema in tools.tool_schemas.values()]
 
 first_query = [
-    {"role": "system", "content": "You are a helpful assistant. Use tools when needed."},
-    {"role": "user", "content": "Add a node labeled 'Curiosity' with belief type 'emotion' and confidence 0.95. Then connect it (via an edge) with relationship('related to') a different node labeled 'Exploration' with belief type 'goal' and confidence 0.85."},
+    {"role": "system", "content": FIRST_QUERY},
+    {"role": "system", "content": f"below is your current knowledge graph (If there's nothing here, then it's empty): {user_api.export_graph_json()}"},
+    {"role": "system", "content": "Please reason and use chain of thought to rationalize the query against the knowledge graph. You must write a rationale of at least 256 tokens. before calling tools"},
+    {"role": "user", "content": " Here is the query. Remember, you should not just mirror what the user says, you should think and reason for yourself and determine how your brain should grow: I don't think there's anything objectively wrong with harming kittens, since god made man the master of all animals."},
 ]
 
 def call_gpt():
