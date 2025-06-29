@@ -103,7 +103,7 @@ class BeliefGraph:
         ]
 
     def to_json(self) -> str:
-        data = nx.readwrite.json_graph.node_link_data(self.graph)
+        data = nx.readwrite.json_graph.node_link_data(self.graph, edges="links")
         return json.dumps(data)
 
     def from_json(self, json_str: str):
