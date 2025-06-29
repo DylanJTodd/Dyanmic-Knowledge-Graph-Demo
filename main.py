@@ -1,56 +1,48 @@
-import requests
-import json
 import os
+import json
 from dotenv import load_dotenv
-from api import user_api, tools
+from openai import OpenAI
+from api import tools, user_api
 
 load_dotenv()
-API_KEY = os.getenv("API_KEY")
+API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not API_KEY:
-    raise ValueError("API_KEY not found")
+    raise ValueError("OPENAI_API_KEY not found in environment")
 
-url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+client = OpenAI(api_key=API_KEY)
+function_schemas = [{"type": "function", "function": schema} for schema in tools.tool_schemas.values()]
 
-gemini_payload = {
-    "system_instruction": 
-    {   
-        "parts": 
-        [{
-            "text": "You are a helpful assistant. Provide clear and concise answers."
-        }]
-    },
-    "contents": 
-    [{
-        "parts": 
-        [{
-            "text": ""
-        }]
-    }],
-    "generationConfig": 
-    {
-        "temperature": 0.7,        
-        "topK": 40,               
-        "topP": 0.95,             
-        "maxOutputTokens": 2048,   
-        "stopSequences": ["END"],
-        "candidateCount": 1,
-        "response_mime_type": "application/json"
-    }
-}
+first_query = [
+    {"role": "system", "content": "You are a helpful assistant. Use tools when needed."},
+    {"role": "user", "content": "Add a node labeled 'Curiosity' with belief type 'emotion' and confidence 0.95. Then connect it (via an edge) with relationship('related to') a different node labeled 'Exploration' with belief type 'goal' and confidence 0.85."},
+]
 
-headers = {"Content-Type": "application/json"}
-try:
-    response = requests.post(url, headers=headers, data=json.dumps(gemini_payload))
-    success = response.status_code == 200
+def call_gpt():
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=first_query,
+        tools=function_schemas,
+        tool_choice="auto",
+        temperature=0.7,
+        top_p=0.95,
+        max_tokens=2048,
+    )
 
-    if success: 
-        result = response.json()
-        print(result['candidates'][0]['content']['parts'][0]['text'])
-        
+    message = response.choices[0].message
+
+    if message.tool_calls:
+        for tool_call in message.tool_calls:
+            function_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
+            if function_name in tools.tool_registry:
+                result = tools.tool_registry[function_name](**arguments)
+                print(f"Tool `{function_name}` called with result: {result}")
+            else:
+                print(f"Unknown tool: {function_name}")
     else:
-        print(f"Error: {response.status_code}")
-        print(response.text)
-        
-except Exception as e:
-    print(f"Exception while requesting response: {e}")
+        print("Response:", message.content)
+
+if __name__ == "__main__":
+    call_gpt()
+    print(user_api.export_graph_json())
