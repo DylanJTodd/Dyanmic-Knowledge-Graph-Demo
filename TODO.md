@@ -1,3 +1,3 @@
 # TODO
 
-- Set up model, prepare for communication, enable tooling access, possible set up for multiple types of API's (claude, gpt, gemini)
+- Handle context properly for prompt 1, 1.5, 3 (summary? arbitrary number of entirely saved prompts? Etc)
