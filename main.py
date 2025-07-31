@@ -28,7 +28,6 @@ prompt1_history: list       = []
 prompt2_history: list       = []
 last_graph_diff: dict | None = None
 tool_call_log: list         = []
-
 # ──────────────────────────  PROMPT 1  ─────────────────────────
 def run_prompt1(user_input: str) -> str:
     global last_graph_diff, tool_call_log
@@ -139,6 +138,7 @@ def run_prompt2(reasoning_result: str, last_user_msg: str) -> str:
         f"- `{c['tool']}` with {json.dumps(c['args'])}"
         for c in tool_call_log
     )
+    node_history = tools.get_node_history()
 
     messages = [
         {"role": "system", "content": SECOND_PROMPT},
@@ -147,6 +147,7 @@ def run_prompt2(reasoning_result: str, last_user_msg: str) -> str:
             f"{json.dumps(last_graph_diff, indent=2) if last_graph_diff else full_graph}"},
         {"role": "system", "content": f"Recent tool calls:\n{tool_summary}"},
         {"role": "system", "content": f"PROMPT_1_REASONING_START\n{reasoning_result}\nPROMPT_1_REASONING_END"},
+        {"role": "system", "content": f"Node history:\n{json.dumps(node_history, indent=2)}"},
         {"role": "user",   "content": last_user_msg},
         *prompt2_history[-1:]
     ]

@@ -195,3 +195,19 @@ def get_node(node_id: str):
 )
 def get_neighbors(node_id: str, as_objects: bool = True):
     return graph.get_neighbors(node_id, as_objects)
+
+@register_tool(
+    name="getNodeHistory",
+    description="Retrieves a global history of most recent node changes."
+)
+def get_node_history():
+    return graph.get_node_history()
+
+@register_tool(
+    name="getEdgeHistory",
+    description="Retrieves a global history of most recent edge changes."
+)
+def get_edge_history():
+    return graph.get_edge_history()
+
+
