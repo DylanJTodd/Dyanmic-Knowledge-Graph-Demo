@@ -74,9 +74,6 @@ def run_prompt1(user_input: str) -> str:
                 tool_call_log.append(
                     {"tool": fn_name, "args": args, "result": result}
                 )
-                print(f"\n[Tool `{fn_name}` Result]: {result}")
-            else:
-                print(f"\n[Unknown tool: {fn_name}]")
 
     current_graph   = user_api.get_graph_dict()
     last_graph_diff = user_api.get_graph_diff(prev_graph, current_graph)
@@ -84,7 +81,7 @@ def run_prompt1(user_input: str) -> str:
     return msg.content or "(No content)"
 
 # ──────────────────────────  PROMPT 1.5  ─────────────────────────
-def run_prompt1_5() -> str:
+def run_prompt1_5(user_input: str) -> str:
     global last_graph_diff, tool_call_log
 
     prev_graph = user_api.get_graph_dict()
@@ -92,14 +89,16 @@ def run_prompt1_5() -> str:
 
     prompt_input = [
         {"role": "system", "content": FIRST_PROMPT},
+        {"role": "system", "content": user_input},
+        {"role": "system", "content": prompt1_history[-1]["content"]},
         {"role": "system", "content": "GRAPH_CONSISTENCY_PASS"},
         {"role": "system", "content":
             "You are now performing a graph consistency check. "
             "Below is the full belief graph. "
             "Detect contradictions, redundancies, and opportunities to add or remove edges or nodes. "
-            "Use tool calls to fix the graph. Return a brief summary of what was changed.\n\n"
+            "Use tool calls to fix the graph. You then must articulate what changes you made, why, and the emotional justifications for it.\n\n"
             + full_graph},
-        {"role": "user", "content": "Begin graph consistency cleanup now."}  # 👈 Required for model to actually respond
+        {"role": "user", "content": "Begin graph consistency cleanup with explanation now."} 
     ]
 
     response = client.chat.completions.create(
@@ -161,22 +160,40 @@ def run_prompt2(reasoning_result: str, last_user_msg: str) -> str:
 
     content = response.choices[0].message.content
     prompt2_history.append({"role": "assistant", "content": content})
-    print("\n[Prompt 2 Reply]:", content)
     return content
 
 # ───────────────────────  SUMMARY PRINTER  ─────────────────────
 def print_full_summary(user_input: str,
                        reasoning_output: str,
+                       justification_1_5: str,
                        tool_calls: list,
                        reflection_output: str) -> None:
-    print("\n[User]:", user_input)
-    print("\n[Prompt 1 Reasoning]:", reasoning_output)
+    print("\n───────────────────── SUMMARY ─────────────────────")
+    
+    print("\n[User Input]:")
+    print(user_input)
+
+    print("\n[Prompt 1 Reasoning Output]:")
+    print(reasoning_output)
+
+    print("\n[Prompt 1.5 Graph Consistency Justification]:")
+    print(justification_1_5)
+
     if tool_calls:
-        print("\n[Tool Calls]:")
+        print("\n[Tool Calls Executed]:")
         for call in tool_calls:
-            print(f"- {call['tool']} with args: {json.dumps(call['args'])}")
-            print(f"  Result: {json.dumps(call['result'])}")
-    print("\n[Prompt 2 Reply]:", reflection_output)
+            print(f"- Tool: {call['tool']}")
+            print(f"  Arguments: {json.dumps(call['args'], indent=2)}")
+            print(f"  Result: {json.dumps(call['result'], indent=2)}")
+
+    print("\n[Prompt 2 Reflection Output]:")
+    print(reflection_output)
+
+    final_graph = user_api.export_graph_json()
+    print("\n[Final Full Graph]:")
+    print(final_graph)
+
+    print("\n────────────────────────────────────────────────────")
 
 # ─────────────────────────  MAIN LOOP  ─────────────────────────
 def main_loop() -> None:
@@ -185,14 +202,17 @@ def main_loop() -> None:
         if user_input.lower().strip() in {"exit", "quit"}:
             break
 
-        reasoning_output  = run_prompt1(user_input)
-        consistency_output = run_prompt1_5()
-        reflection_output = run_prompt2(reasoning_output + "\n\n" + consistency_output, user_input)
+        reasoning_output   = run_prompt1(user_input)
+        justification_1_5  = run_prompt1_5(user_input)
+        reflection_output  = run_prompt2(reasoning_output + "\n\n" + justification_1_5, user_input)
 
-        print_full_summary(user_input,
-                           reasoning_output + "\n\n" + consistency_output,
-                           tool_call_log,
-                           reflection_output)
+        print_full_summary(
+            user_input,
+            reasoning_output,
+            justification_1_5,
+            tool_call_log,
+            reflection_output
+        )
 
 
 # ────────────────────────────  RUN  ────────────────────────────
