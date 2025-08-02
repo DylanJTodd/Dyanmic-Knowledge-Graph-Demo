@@ -9,6 +9,7 @@ from api import tools, user_api
 load_dotenv()
 API_KEY        = os.getenv("OPENAI_API_KEY")
 FIRST_PROMPT   = os.getenv("SYSTEM_PROMPT_1")
+FIRST_5_PROMPT = os.getenv("SYSTEM_PROMPT_1_5")
 SECOND_PROMPT  = os.getenv("SYSTEM_PROMPT_2")
 
 if not API_KEY:
@@ -88,7 +89,7 @@ def run_prompt1_5(user_input: str) -> str:
     full_graph = user_api.export_graph_json()
 
     prompt_input = [
-        {"role": "system", "content": FIRST_PROMPT},
+        {"role": "system", "content": FIRST_5_PROMPT},
         {"role": "system", "content": user_input},
         {"role": "system", "content": prompt1_history[-1]["content"]},
         {"role": "system", "content": "GRAPH_CONSISTENCY_PASS"},
