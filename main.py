@@ -122,7 +122,6 @@ def run_prompt1_5(user_input: str) -> str:
                 tool_call_log.append(
                     {"tool": fn_name, "args": args, "result": result}
                 )
-                print(f"\n[Prompt 1.5 Tool `{fn_name}` Result]: {result}")
             else:
                 print(f"\n[Prompt 1.5 Unknown tool: {fn_name}]")
 
