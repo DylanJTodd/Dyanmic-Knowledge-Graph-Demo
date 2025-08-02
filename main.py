@@ -27,6 +27,7 @@ function_schemas = [
 # ─────────────────────  CONVERSATION STATE  ────────────────────
 prompt1_history: list       = []
 prompt2_history: list       = []
+prompt1_5_history: list     = []
 last_graph_diff: dict | None = None
 tool_call_log: list         = []
 # ──────────────────────────  PROMPT 1  ─────────────────────────
@@ -129,6 +130,7 @@ def run_prompt1_5(user_input: str) -> str:
     current_graph   = user_api.get_graph_dict()
     last_graph_diff = user_api.get_graph_diff(prev_graph, current_graph)
 
+    prompt1_5_history.append({"role": "assistant", "content": msg.content or ""})
     return msg.content or "(No content)"
 # ──────────────────────────  PROMPT 2  ─────────────────────────
 def run_prompt2(reasoning_result: str, last_user_msg: str) -> str:
