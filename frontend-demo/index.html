@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Soul Engine</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #121212;
+      color: #e0e0e0;
+      padding: 2em;
+    }
+    textarea, input, button {
+      font-size: 1em;
+      padding: 0.5em;
+      margin: 0.5em 0;
+      width: 100%;
+      background: #1e1e1e;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+    #output {
+      margin-top: 1em;
+      white-space: pre-wrap;
+      background: #1a1a1a;
+      padding: 1em;
+      border-radius: 4px;
+      border: 1px solid #333;
+    }
+    #apiPrompt {
+      background: #181818;
+      border: 1px solid #555;
+      padding: 1em;
+      border-radius: 6px;
+      margin-bottom: 1em;
+    }
+    #mainUI {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>Soul Engine Prototype</h1>
+
+  <div id="apiPrompt">
+    <label for="apiKey">Enter your OpenAI API Key:</label>
+    <input type="password" id="apiKey" placeholder="sk-..." />
+    <button id="setApiKey">Save API Key</button>
+  </div>
+
+  <div id="mainUI">
+    <label for="userInput">Enter a prompt:</label>
+    <textarea id="userInput" rows="4"></textarea>
+    <button id="runButton">Run</button>
+    <button id="changeApiKey">Change API Key</button>
+
+    <div id="output">
+      <h2>Output</h2>
+      <pre id="resultDisplay">Awaiting input...</pre>
+    </div>
+  </div>
+
+  <script type="module">
+    import { handleUserInput } from './script.js';
+
+    const runButton = document.getElementById("runButton");
+    const userInputField = document.getElementById("userInput");
+    const resultDisplay = document.getElementById("resultDisplay");
+    const apiPrompt = document.getElementById("apiPrompt");
+    const mainUI = document.getElementById("mainUI");
+    const apiKeyInput = document.getElementById("apiKey");
+    const setApiKeyBtn = document.getElementById("setApiKey");
+    const changeApiKeyBtn = document.getElementById("changeApiKey");
+
+    // Show or hide based on localStorage
+    const storedKey = localStorage.getItem("OPENAI_API_KEY");
+    if (storedKey && storedKey.startsWith("sk-")) {
+      apiPrompt.style.display = "none";
+      mainUI.style.display = "block";
+    }
+
+    setApiKeyBtn.addEventListener("click", () => {
+      const key = apiKeyInput.value.trim();
+      if (!key.startsWith("sk-")) {
+        alert("Invalid key format");
+        return;
+      }
+      localStorage.setItem("OPENAI_API_KEY", key);
+      apiPrompt.style.display = "none";
+      mainUI.style.display = "block";
+    });
+
+    changeApiKeyBtn.addEventListener("click", () => {
+      // Reset UI state
+      mainUI.style.display = "none";
+      apiPrompt.style.display = "block";
+      apiKeyInput.value = ""; // clear old value
+      localStorage.removeItem("OPENAI_API_KEY"); // optional: force new input
+    });
+
+    runButton.addEventListener("click", async () => {
+      const userInput = userInputField.value.trim();
+      if (!userInput) {
+        resultDisplay.textContent = "Please enter a prompt.";
+        return;
+      }
+
+      resultDisplay.textContent = "Processing...";
+      try {
+        const { reasoning, justification, reflection, toolCalls, graph } = await handleUserInput(userInput);
+
+        resultDisplay.textContent = `
+[Prompt 1 Reasoning]:
+${reasoning}
+
+[Prompt 1.5 Justification]:
+${justification}
+
+[Tool Calls]:
+${toolCalls.map(tc => `- ${tc.tool}(${JSON.stringify(tc.args)})`).join("\n")}
+
+[Prompt 2 Reflection]:
+${reflection}
+
+[Graph Snapshot]:
+${JSON.stringify(graph, null, 2)}
+        `;
+      } catch (err) {
+        resultDisplay.textContent = "Error: " + err.message;
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
