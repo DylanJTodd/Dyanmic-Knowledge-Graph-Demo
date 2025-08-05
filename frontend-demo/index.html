@@ -93,11 +93,10 @@
     });
 
     changeApiKeyBtn.addEventListener("click", () => {
-      // Reset UI state
       mainUI.style.display = "none";
       apiPrompt.style.display = "block";
-      apiKeyInput.value = ""; // clear old value
-      localStorage.removeItem("OPENAI_API_KEY"); // optional: force new input
+      apiKeyInput.value = "";
+      localStorage.removeItem("OPENAI_API_KEY");
     });
 
     runButton.addEventListener("click", async () => {
