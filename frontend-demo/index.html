@@ -30,7 +30,7 @@
     </div>
 
     <script type="module">
-      import { handleUserInput } from './script.js';
+      import { handleUserInput } from './script.js?cachebust=1';
       import { marked } from 'https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js';
 
       const userInputField = document.getElementById('userInput');
@@ -72,10 +72,12 @@
           msg.style.cursor = 'pointer';
           let expanded = false;
           msg.addEventListener('click', () => {
-            expanded = !expanded;
-            msg.innerHTML = marked.parse(
-              expanded ? expandedContent : 'Thinking... (click to expand)'
-            );
+            if (!expanded) {
+              msg.innerHTML = marked.parse(expandedContent);
+              msg.style.cursor = 'default';
+              msg.classList.remove('placeholder');
+              expanded = true;
+            }
           });
         }
 
@@ -92,7 +94,7 @@
         autoResize();
 
         let expandablePlaceholder = document.createElement('div');
-        expandablePlaceholder.className = 'message bot';
+        expandablePlaceholder.className = 'message bot placeholder';
         expandablePlaceholder.innerHTML = marked.parse('Thinking... (click to expand)');
         expandablePlaceholder.style.cursor = 'pointer';
         chatContainer.appendChild(expandablePlaceholder);
@@ -100,17 +102,21 @@
 
         try {
           const { reflection, prompt1, prompt1_5 } = await handleUserInput(input);
-          const expandedContent = `## 🧠 Initial Reasoning\n${prompt1}\n\n## 🔗 Graph Connecting Phase\n${prompt1_5}\n\n---\n${reflection}`;
+          const expandedContent = `## 🧠 Initial Reasoning\n${prompt1}\n\n## 🔗 Graph Connecting Phase\n${prompt1_5}`;
 
+          // Add expandable click once
           let expanded = false;
           expandablePlaceholder.addEventListener('click', () => {
-            expanded = !expanded;
-            expandablePlaceholder.innerHTML = marked.parse(
-              expanded ? expandedContent : 'Thinking... (click to expand)'
-            );
+            if (!expanded) {
+              expandablePlaceholder.innerHTML = marked.parse(expandedContent);
+              expandablePlaceholder.style.cursor = 'default';
+              expandablePlaceholder.classList.remove('placeholder');
+              expanded = true;
+            }
           });
 
-          expandablePlaceholder.innerHTML = marked.parse(reflection);
+          // Always add final reflection separately
+          appendMessage(reflection, false);
         } catch (err) {
           expandablePlaceholder.textContent = 'Error: ' + err.message;
           console.error(err);

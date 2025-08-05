@@ -2,9 +2,9 @@
 import { toolRegistry, toolSchemas } from './tools.js';
 import { getGraphDict, exportGraphJson, getGraphDiff, getNodeHistory } from './user_tools.js';
 
-const firstPrompt = `...`;
-const first5Prompt = `...`;
-const secondPrompt = `...`;
+const firstPrompt = `...`; // full prompt 1 here
+const first5Prompt = `...`; // full prompt 1.5 here
+const secondPrompt = `...`; // full prompt 2 here
 
 let prompt1History = [];
 let prompt2History = [];
@@ -47,104 +47,121 @@ async function callOpenAI(messages, tools = [], temperature = 0.7) {
 }
 
 async function runPrompt1(userInput) {
-  const prevGraph = getGraphDict();
-  const systemGraphInfo = lastGraphDiff
-    ? `Graph diff: ${JSON.stringify(lastGraphDiff, null, 2)}`
-    : `Graph dump: ${exportGraphJson()}`;
+  try {
+    const prevGraph = getGraphDict();
+    const systemGraphInfo = lastGraphDiff
+      ? `Graph diff: ${JSON.stringify(lastGraphDiff, null, 2)}`
+      : `Graph dump: ${exportGraphJson()}`;
 
-  const messages = [
-    { role: "system", content: firstPrompt },
-    ...prompt1History,
-    { role: "system", content: systemGraphInfo },
-    { role: "user", content: userInput },
-  ];
+    const messages = [
+      { role: "system", content: firstPrompt },
+      ...prompt1History,
+      { role: "system", content: systemGraphInfo },
+      { role: "user", content: userInput },
+    ];
 
-  const result = await callOpenAI(
-    messages,
-    Object.values(toolSchemas).map((schema) => ({
-      type: "function",
-      function: {
-        name: schema.name,
-        description: schema.description,
-        parameters: schema.parameters,
-      },
-    }))
-  );
+    const result = await callOpenAI(
+      messages,
+      Object.values(toolSchemas).map((schema) => ({
+        type: "function",
+        function: {
+          name: schema.name,
+          description: schema.description,
+          parameters: schema.parameters,
+        },
+      }))
+    );
 
-  const msg = result.choices[0].message;
-  prompt1History.push(
-    { role: "user", content: userInput },
-    { role: "assistant", content: msg.content || "" }
-  );
+    const msg = result.choices?.[0]?.message;
+    if (!msg || typeof msg.content !== "string") {
+      throw new Error("Prompt1 returned invalid content.");
+    }
 
-  toolCallLog = [];
-  if (msg.tool_calls) {
-    for (const tc of msg.tool_calls) {
-      const fnName = tc.function.name;
-      const args = JSON.parse(tc.function.arguments);
-      if (fnName in toolRegistry) {
-        const result = toolRegistry[fnName](args);
-        toolCallLog.push({ tool: fnName, args, result });
+    prompt1History.push(
+      { role: "user", content: userInput },
+      { role: "assistant", content: msg.content }
+    );
+
+    toolCallLog = [];
+    if (msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        const fnName = tc.function.name;
+        const args = JSON.parse(tc.function.arguments);
+        if (fnName in toolRegistry) {
+          const result = toolRegistry[fnName](args);
+          toolCallLog.push({ tool: fnName, args, result });
+        }
       }
     }
-  }
 
-  const currentGraph = getGraphDict();
-  lastGraphDiff = getGraphDiff(prevGraph, currentGraph);
-  return msg.content || "(No content)";
+    const currentGraph = getGraphDict();
+    lastGraphDiff = getGraphDiff(prevGraph, currentGraph);
+    return msg.content;
+  } catch (err) {
+    console.error("runPrompt1 failed:", err);
+    return "(No content due to error)";
+  }
 }
 
+
 async function runPrompt15(userInput) {
-  const prevGraph = getGraphDict();
-  const fullGraph = exportGraphJson();
+  try {
+    const prevGraph = getGraphDict();
+    const fullGraph = exportGraphJson();
 
-  const messages = [
-    { role: "system", content: first5Prompt },
-    { role: "system", content: userInput },
-    { role: "system", content: prompt1History[prompt1History.length - 1]?.content || "" },
-    { role: "system", content: "GRAPH_CONSISTENCY_PASS" },
-    {
-      role: "system",
-      content:
-        `You are now performing a graph consistency check.\nBelow is the full belief graph.\nDetect contradictions, redundancies, and opportunities to add or remove edges or nodes.\nUse tool calls to fix the graph. Then articulate what changes you made, why, and the emotional justifications for it.\n\n${fullGraph}`,
-    },
-    { role: "user", content: "Begin graph consistency cleanup with explanation now." },
-  ];
-
-  const result = await callOpenAI(
-    messages,
-    Object.values(toolSchemas).map((schema) => ({
-      type: "function",
-      function: {
-        name: schema.name,
-        description: schema.description,
-        parameters: schema.parameters,
+    const messages = [
+      { role: "system", content: first5Prompt },
+      { role: "system", content: userInput },
+      { role: "system", content: prompt1History[prompt1History.length - 1]?.content || "" },
+      { role: "system", content: "GRAPH_CONSISTENCY_PASS" },
+      {
+        role: "system",
+        content: `You are now performing a graph consistency check.\nBelow is the full belief graph.\nDetect contradictions, redundancies, and opportunities to add or remove edges or nodes.\nUse tool calls to fix the graph. Then articulate what changes you made, why, and the emotional justifications for it.\n\n${fullGraph}`,
       },
-    })),
-    0.3
-  );
+      { role: "user", content: "Begin graph consistency cleanup with explanation now." },
+    ];
 
-  const msg = result.choices[0].message;
-  toolCallLog = [];
+    const result = await callOpenAI(
+      messages,
+      Object.values(toolSchemas).map((schema) => ({
+        type: "function",
+        function: {
+          name: schema.name,
+          description: schema.description,
+          parameters: schema.parameters,
+        },
+      })),
+      0.3
+    );
 
-  if (msg.tool_calls) {
-    for (const tc of msg.tool_calls) {
-      const fnName = tc.function.name;
-      const args = JSON.parse(tc.function.arguments);
-      if (fnName in toolRegistry) {
-        const result = toolRegistry[fnName](args);
-        toolCallLog.push({ tool: fnName, args, result });
-      } else {
-        console.log(`\n[Prompt 1.5 Unknown tool: ${fnName}]`);
+    const msg = result.choices?.[0]?.message;
+    if (!msg || typeof msg.content !== "string") {
+      throw new Error("Prompt 1.5 returned invalid content.");
+    }
+
+    toolCallLog = [];
+    if (msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        const fnName = tc.function.name;
+        const args = JSON.parse(tc.function.arguments);
+        if (fnName in toolRegistry) {
+          const result = toolRegistry[fnName](args);
+          toolCallLog.push({ tool: fnName, args, result });
+        } else {
+          console.log(`\n[Prompt 1.5 Unknown tool: ${fnName}]`);
+        }
       }
     }
+
+    const currentGraph = getGraphDict();
+    lastGraphDiff = getGraphDiff(prevGraph, currentGraph);
+
+    prompt15History.push({ role: "assistant", content: msg.content });
+    return msg.content;
+  } catch (err) {
+    console.error("runPrompt15 failed:", err);
+    return "(No content due to error)";
   }
-
-  const currentGraph = getGraphDict();
-  lastGraphDiff = getGraphDiff(prevGraph, currentGraph);
-
-  prompt15History.push({ role: "assistant", content: msg.content || "" });
-  return msg.content || "(No content)";
 }
 
 async function runPrompt2(reasoningResult, lastUserMsg) {
