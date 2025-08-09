@@ -263,3 +263,40 @@ button:hover {
 }
 
 
+.message.expandable .expander-header {
+        user-select: none;
+        cursor: pointer;
+        opacity: 0.85;
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+      }
+.message.expandable .expander-header .caret {
+  font-family: monospace;
+}
+.message.expandable.expanded .expander-header { opacity: 1; }
+.message.expandable .expander-body { display: none; }
+.message.expandable.expanded .expander-body { display: block; }
+
+.section {
+  margin-top: .6rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: .6rem;
+}
+.section h4 {
+  margin: 0 0 .4rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  opacity: 0.9;
+}
+.md { /* container whose HTML is produced by marked */
+  white-space: normal;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.dim { opacity: .7; }
+.live-dot { display:inline-block; width:.48rem; height:.48rem; border-radius:50%; background: currentColor; opacity:.7; animation: pulse 1.2s infinite; vertical-align: middle; margin-left: .35rem;}
+@keyframes pulse { 0%{opacity:.2;} 50%{opacity:.9;} 100%{opacity:.2;} }

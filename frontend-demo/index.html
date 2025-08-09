@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Dynamic-Knowledge-Graph-Demo</title>
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css"/>
   </head>
   <body>
     <div id="header">
@@ -30,7 +30,11 @@
     </div>
 
     <script type="module">
-      import { handleUserInput } from './script.js?cachebust=1';
+      import {
+        runStreamingFlow,
+        formatToolCallsMarkdown
+      } from './script.js?cachebust=8';
+
       import { marked } from 'https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js';
 
       const userInputField = document.getElementById('userInput');
@@ -41,102 +45,211 @@
       const setApiKeyBtn = document.getElementById('setApiKey');
       const gearButton = document.getElementById('gearButton');
 
+      // API key gate
       const storedKey = localStorage.getItem('OPENAI_API_KEY');
-      if (storedKey && storedKey.startsWith('sk-')) {
-        apiPrompt.style.display = 'none';
-      } else {
-        apiPrompt.style.display = 'block';
-      }
+      apiPrompt.style.display = storedKey && storedKey.startsWith('sk-') ? 'none' : 'block';
 
       setApiKeyBtn.addEventListener('click', () => {
         const key = apiKeyInput.value.trim();
-        if (!key.startsWith('sk-')) {
-          alert('Invalid key format');
-          return;
-        }
+        if (!key.startsWith('sk-')) { alert('Invalid key format'); return; }
         localStorage.setItem('OPENAI_API_KEY', key);
         apiPrompt.style.display = 'none';
       });
 
       gearButton.addEventListener('click', () => {
-        apiPrompt.style.display =
-          apiPrompt.style.display === 'block' ? 'none' : 'block';
+        apiPrompt.style.display = apiPrompt.style.display === 'block' ? 'none' : 'block';
       });
 
-      function appendMessage(text, isUser = false, isExpandable = false, expandedContent = '') {
-        const msg = document.createElement('div');
-        msg.className = 'message ' + (isUser ? 'user' : 'bot');
-        msg.innerHTML = marked.parse(text);
-
-        if (isExpandable) {
-          msg.style.cursor = 'pointer';
-          let expanded = false;
-          msg.addEventListener('click', () => {
-            if (!expanded) {
-              msg.innerHTML = marked.parse(expandedContent);
-              msg.style.cursor = 'default';
-              msg.classList.remove('placeholder');
-              expanded = true;
-            }
-          });
-        }
-
-        chatContainer.appendChild(msg);
+      // Helpers
+      function appendMessageBubble({ html = '', text = '', cls = '' }) {
+        const div = document.createElement('div');
+        div.className = `message ${cls}`.trim();
+        if (html) div.innerHTML = html; else div.textContent = text;
+        chatContainer.appendChild(div);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        return div;
+      }
+
+      function createExpandableThoughtsBubble() {
+        const container = document.createElement('div');
+        container.className = 'message bot expandable';
+
+        const header = document.createElement('div');
+        header.className = 'expander-header';
+        const caret = document.createElement('span');
+        caret.className = 'caret';
+        caret.textContent = '▸';
+        const title = document.createElement('span');
+        title.textContent = 'Thoughts (click to expand)';
+        const live = document.createElement('span');
+        live.className = 'live-dot';
+        header.append(caret, title, live);
+
+        const body = document.createElement('div');
+        body.className = 'expander-body';
+
+        // Sections
+        const s1 = document.createElement('div');
+        s1.className = 'section';
+        s1.innerHTML = `<h4>Initial Reasoning</h4><div class="md" data-id="p1"></div>`;
+
+        const s15 = document.createElement('div');
+        s15.className = 'section';
+        s15.innerHTML = `<h4>Graph Connecting Phase</h4><div class="md" data-id="p15"></div>`;
+
+        const sTools = document.createElement('div');
+        sTools.className = 'section';
+        sTools.innerHTML = `<h4>Tool Calls</h4><div class="md" data-id="tools" class="mono dim"></div>`;
+
+        body.append(s1, s15, sTools);
+        container.append(header, body);
+        chatContainer.appendChild(container);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        // Toggle
+        let expanded = false;
+        header.addEventListener('click', () => {
+          expanded = !expanded;
+          container.classList.toggle('expanded', expanded);
+          caret.textContent = expanded ? '▾' : '▸';
+          title.textContent = expanded ? 'Thoughts (expanded)' : 'Thoughts (click to expand)';
+        });
+
+        return {
+          container,
+          header,
+          body,
+          setLive(visible) { live.style.display = visible ? 'inline-block' : 'none'; },
+          setExpandedNow() { // open immediately if user clicks mid-run
+            if (!container.classList.contains('expanded')) {
+              container.classList.add('expanded');
+              caret.textContent = '▾';
+              title.textContent = 'Thoughts (expanded)';
+            }
+          },
+          elP1() { return body.querySelector('[data-id="p1"]'); },
+          elP15() { return body.querySelector('[data-id="p15"]'); },
+          elTools() { return body.querySelector('[data-id="tools"]'); },
+        };
+      }
+
+      // Streaming final bubble updates w/ markdown
+      function createStreamingBotBubble() {
+        const div = appendMessageBubble({ html: `<div class="md dim">Generating…<span class="live-dot"></span></div>`, cls: 'bot' });
+        return {
+          update(markdown) {
+            div.querySelector('.md').innerHTML = marked.parse(markdown || '');
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+          },
+          done() {
+            const md = div.querySelector('.md');
+            if (md) md.classList.remove('dim');
+            const live = div.querySelector('.live-dot');
+            if (live) live.remove();
+          }
+        };
+      }
+
+      function throttle(fn, ms) {
+        let t = 0, lastArgs = null, scheduled = false;
+        return (...args) => {
+          lastArgs = args;
+          const now = performance.now();
+          const doRun = () => { scheduled = false; t = performance.now(); fn(...lastArgs); };
+          if (!scheduled && now - t >= ms) doRun();
+          else if (!scheduled) { scheduled = true; setTimeout(doRun, ms - (now - t)); }
+        };
       }
 
       async function sendMessage() {
         const input = userInputField.value.trim();
         if (!input) return;
 
-        appendMessage(input, true);
+        // User bubble
+        appendMessageBubble({ html: marked.parse(input), cls: 'user' });
         userInputField.value = '';
         autoResize();
 
-        let expandablePlaceholder = document.createElement('div');
-        expandablePlaceholder.className = 'message bot placeholder';
-        expandablePlaceholder.innerHTML = marked.parse('Thinking... (click to expand)');
-        expandablePlaceholder.style.cursor = 'pointer';
-        chatContainer.appendChild(expandablePlaceholder);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        // Thoughts bubble (expandable, clickable immediately)
+        const thoughts = createExpandableThoughtsBubble();
+
+        // Final answer bubble (streams)
+        const finalBubble = createStreamingBotBubble();
+
+        let p1Buf = '';
+        let p15Buf = '';
+        let toolsMarkdown = '';
+
+        const renderP1 = throttle(() => {
+          thoughts.elP1().innerHTML = marked.parse(p1Buf || '*…*');
+        }, 80);
+
+        const renderP15 = throttle(() => {
+          thoughts.elP15().innerHTML = marked.parse(p15Buf || '*…*');
+        }, 80);
+
+        const renderTools = throttle(() => {
+          thoughts.elTools().innerHTML = marked.parse(toolsMarkdown || '_No tool calls yet._');
+        }, 120);
 
         try {
-          const { reflection, prompt1, prompt1_5 } = await handleUserInput(input);
-          const expandedContent = `## 🧠 Initial Reasoning\n${prompt1}\n\n## 🔗 Graph Connecting Phase\n${prompt1_5}`;
+          await runStreamingFlow(input, {
+            onPrompt1Delta(chunk) {
+              p1Buf += chunk;
+              renderP1();
+            },
+            onPrompt1Start() {
+              thoughts.setLive(true);
+            },
+            async onPrompt1ToolRun(logArray) {
+              toolsMarkdown = formatToolCallsMarkdown(logArray);
+              renderTools();
+            },
+            onPrompt1Done() {
+              renderP1();
+            },
 
-          // Add expandable click once
-          let expanded = false;
-          expandablePlaceholder.addEventListener('click', () => {
-            if (!expanded) {
-              expandablePlaceholder.innerHTML = marked.parse(expandedContent);
-              expandablePlaceholder.style.cursor = 'default';
-              expandablePlaceholder.classList.remove('placeholder');
-              expanded = true;
+            onPrompt15Start() {
+              thoughts.setLive(true);
+            },
+            onPrompt15Delta(chunk) {
+              p15Buf += chunk;
+              renderP15();
+            },
+            async onPrompt15ToolRun(logArray) {
+              toolsMarkdown = formatToolCallsMarkdown(logArray);
+              renderTools();
+            },
+            onPrompt15Done() {
+              renderP15();
+            },
+
+            onFinalStart() {
+              thoughts.setLive(false);
+            },
+            onFinalDelta(chunk, fullSoFar) {
+              finalBubble.update(fullSoFar);
+            },
+            onFinalDone() {
+              finalBubble.done();
             }
           });
 
-          // Always add final reflection separately
-          appendMessage(reflection, false);
         } catch (err) {
-          expandablePlaceholder.textContent = 'Error: ' + err.message;
-          console.error(err);
+          finalBubble.update(`**Error:** ${err.message}`);
+          finalBubble.done();
         }
       }
 
       runButton.addEventListener('click', sendMessage);
-
       userInputField.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          sendMessage();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
       });
 
       function autoResize() {
         userInputField.style.height = 'auto';
         userInputField.style.height = userInputField.scrollHeight + 'px';
       }
-
       userInputField.addEventListener('input', autoResize);
     </script>
   </body>
