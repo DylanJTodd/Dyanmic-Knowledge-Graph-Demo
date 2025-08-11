@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+
+    <!-- Header -->
     <div id="header">
       <div id="viewSwitcher">
         <button id="chatViewBtn" class="active">Chat</button>
@@ -16,6 +18,7 @@
       <button id="gearButton" title="Settings">⚙️</button>
     </div>
 
+    <!-- Settings Panel -->
     <div id="settingsPanel">
       <div class="settings-group">
         <label for="apiKey">OpenAI API Key:</label>
@@ -51,6 +54,7 @@
       </div>
     </div>
 
+    <!-- Chat Area -->
     <div id="chatView">
       <div id="chatContainer"></div>
       <div id="inputArea">
@@ -65,6 +69,7 @@
       </div>
     </div>
 
+    <!-- Graph Area -->
     <div id="graphView">
       <div id="cy"></div>
       <div id="graph-controls">
@@ -78,6 +83,7 @@
       </div>
     </div>
 
+    <!-- Input Modal -->
     <div id="input-modal-overlay" style="display: none">
       <div id="input-modal">
         <h3 id="modal-title"></h3>
@@ -112,6 +118,7 @@
       const runButton = document.getElementById("runButton");
       const chatContainer = document.getElementById("chatContainer");
 
+      //Reset state
       window.addEventListener("load", () => {
         clearGraph();
         sessionStorage.removeItem("KNOWLEDGE_GRAPH_STATE");
@@ -142,6 +149,8 @@
           })
         );
       }
+
+      
       setApiKeyBtn.addEventListener("click", () => {
         const key = apiKeyInput.value.trim();
         if (!key.startsWith("sk-")) {
