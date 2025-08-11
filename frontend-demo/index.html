@@ -1,256 +1,351 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dynamic-Knowledge-Graph-Demo</title>
-    <link rel="stylesheet" href="style.css"/>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div id="header">
+      <div id="viewSwitcher">
+        <button id="chatViewBtn" class="active">Chat</button>
+        <button id="graphViewBtn">Graph</button>
+      </div>
       <h2>Dynamic-Knowledge-Graph-Demo</h2>
       <button id="gearButton" title="Settings">⚙️</button>
     </div>
 
-    <div id="apiPrompt">
-      <label for="apiKey">Enter OpenAI API Key:</label>
-      <div class="inputRow">
-        <input type="password" id="apiKey" placeholder="sk-..." />
-        <button id="setApiKey">Save</button>
+    <div id="settingsPanel">
+      <div class="settings-group">
+        <label for="apiKey">OpenAI API Key:</label>
+        <div class="inputRow">
+          <input type="password" id="apiKey" placeholder="sk-..." />
+          <button id="setApiKey">Save</button>
+        </div>
+      </div>
+      <div class="settings-group">
+        <h4>AI Settings</h4>
+        <label for="temperature-slider"
+          >Temperature: <span id="temperature-value">0.7</span></label
+        >
+        <input
+          type="range"
+          id="temperature-slider"
+          min="0"
+          max="2"
+          step="0.1"
+          value="0.7"
+        />
+        <label for="max-tokens-slider"
+          >Max Tokens: <span id="max-tokens-value">4096</span></label
+        >
+        <input
+          type="range"
+          id="max-tokens-slider"
+          min="512"
+          max="8192"
+          step="256"
+          value="4096"
+        />
       </div>
     </div>
 
-    <div id="chatContainer"></div>
-
-    <div id="inputArea">
-      <div class="inputWrapper">
-        <textarea id="userInput" rows="1" placeholder="Type a message..."></textarea>
-        <button id="runButton" title="Send">➤</button>
+    <div id="chatView">
+      <div id="chatContainer"></div>
+      <div id="inputArea">
+        <div class="inputWrapper">
+          <textarea
+            id="userInput"
+            rows="1"
+            placeholder="Type a message..."
+          ></textarea>
+          <button id="runButton" title="Send">➤</button>
+        </div>
       </div>
     </div>
 
+    <div id="graphView">
+      <div id="cy"></div>
+      <div id="graph-controls">
+        <button id="add-node-btn">+ Add Node</button>
+        <button id="cancel-edge-btn" style="display: none">Cancel Edge</button>
+      </div>
+      <div id="info-panel" class="info-panel" style="display: none">
+        <button id="info-panel-close" class="info-panel__close">&times;</button>
+        <div id="info-panel-content"></div>
+        <div id="info-panel-actions"></div>
+      </div>
+    </div>
+
+    <div id="input-modal-overlay" style="display: none">
+      <div id="input-modal">
+        <h3 id="modal-title"></h3>
+        <div id="modal-body"></div>
+        <div id="modal-actions">
+          <button id="modal-cancel-btn">Cancel</button>
+          <button id="modal-save-btn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
     <script type="module">
-      import {
-        runStreamingFlow,
-        formatToolCallsMarkdown
-      } from './script.js?cachebust=8';
+      import { runStreamingFlow, formatToolCallsMarkdown } from "./script.js?cachebust=16";
+      import { exportGraphJson, clearGraph } from "./user_tools.js?cachebust=16";
+      import { initGraphVisualization, renderGraph } from "./graph-view.js?cachebust=16";
+      import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 
-      import { marked } from 'https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js';
+      const chatView = document.getElementById("chatView");
+      const graphView = document.getElementById("graphView");
+      const chatViewBtn = document.getElementById("chatViewBtn");
+      const graphViewBtn = document.getElementById("graphViewBtn");
+      const gearButton = document.getElementById("gearButton");
+      const settingsPanel = document.getElementById("settingsPanel");
+      const apiKeyInput = document.getElementById("apiKey");
+      const setApiKeyBtn = document.getElementById("setApiKey");
+      const temperatureSlider = document.getElementById("temperature-slider");
+      const temperatureValueSpan = document.getElementById("temperature-value");
+      const maxTokensSlider = document.getElementById("max-tokens-slider");
+      const maxTokensValueSpan = document.getElementById("max-tokens-value");
+      const userInputField = document.getElementById("userInput");
+      const runButton = document.getElementById("runButton");
+      const chatContainer = document.getElementById("chatContainer");
 
-      const userInputField = document.getElementById('userInput');
-      const runButton = document.getElementById('runButton');
-      const chatContainer = document.getElementById('chatContainer');
-      const apiPrompt = document.getElementById('apiPrompt');
-      const apiKeyInput = document.getElementById('apiKey');
-      const setApiKeyBtn = document.getElementById('setApiKey');
-      const gearButton = document.getElementById('gearButton');
-
-      // API key gate
-      const storedKey = localStorage.getItem('OPENAI_API_KEY');
-      apiPrompt.style.display = storedKey && storedKey.startsWith('sk-') ? 'none' : 'block';
-
-      setApiKeyBtn.addEventListener('click', () => {
-        const key = apiKeyInput.value.trim();
-        if (!key.startsWith('sk-')) { alert('Invalid key format'); return; }
-        localStorage.setItem('OPENAI_API_KEY', key);
-        apiPrompt.style.display = 'none';
+      window.addEventListener("load", () => {
+        clearGraph();
+        sessionStorage.removeItem("KNOWLEDGE_GRAPH_STATE");
+        sessionStorage.removeItem("GRAPH_DIFF");
+        loadSettings();
       });
 
-      gearButton.addEventListener('click', () => {
-        apiPrompt.style.display = apiPrompt.style.display === 'block' ? 'none' : 'block';
-      });
+      function loadSettings() {
+        const storedKey = localStorage.getItem("OPENAI_API_KEY");
+        if (storedKey) apiKeyInput.value = storedKey;
+        settingsPanel.style.display = !storedKey || !storedKey.startsWith("sk-") ? "block" : "none";
 
-      // Helpers
-      function appendMessageBubble({ html = '', text = '', cls = '' }) {
-        const div = document.createElement('div');
-        div.className = `message ${cls}`.trim();
-        if (html) div.innerHTML = html; else div.textContent = text;
-        chatContainer.appendChild(div);
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-        return div;
+        const aiSettings = JSON.parse(localStorage.getItem("AI_SETTINGS")) || {};
+        const temp = aiSettings.temperature !== undefined ? aiSettings.temperature : 0.7;
+        temperatureSlider.value = temp;
+        temperatureValueSpan.textContent = temp;
+        const tokens = aiSettings.max_tokens !== undefined ? aiSettings.max_tokens : 4096;
+        maxTokensSlider.value = tokens;
+        maxTokensValueSpan.textContent = tokens;
       }
 
+      function saveAiSettings() {
+        localStorage.setItem(
+          "AI_SETTINGS",
+          JSON.stringify({
+            temperature: parseFloat(temperatureSlider.value),
+            max_tokens: parseInt(maxTokensSlider.value, 10),
+          })
+        );
+      }
+      setApiKeyBtn.addEventListener("click", () => {
+        const key = apiKeyInput.value.trim();
+        if (!key.startsWith("sk-")) {
+          alert("Invalid key format");
+          return;
+        }
+        localStorage.setItem("OPENAI_API_KEY", key);
+        settingsPanel.style.display = "none";
+      });
+      gearButton.addEventListener("click", () => {
+        settingsPanel.style.display =
+          settingsPanel.style.display === "block" ? "none" : "block";
+      });
+      temperatureSlider.addEventListener("input", () => {
+        temperatureValueSpan.textContent = temperatureSlider.value;
+        saveAiSettings();
+      });
+      maxTokensSlider.addEventListener("input", () => {
+        maxTokensValueSpan.textContent = maxTokensSlider.value;
+        saveAiSettings();
+      });
+
+      let graphInitialized = false;
+      chatViewBtn.addEventListener("click", () => {
+        chatView.style.display = "flex";
+        graphView.style.display = "none";
+        chatViewBtn.classList.add("active");
+        graphViewBtn.classList.remove("active");
+      });
+      graphViewBtn.addEventListener("click", () => {
+        chatView.style.display = "none";
+        graphView.style.display = "flex";
+        chatViewBtn.classList.remove("active");
+        graphViewBtn.classList.add("active");
+        if (!graphInitialized) {
+          initGraphVisualization("cy");
+          graphInitialized = true;
+        }
+        renderGraph();
+      });
+
       function createExpandableThoughtsBubble() {
-        const container = document.createElement('div');
-        container.className = 'message bot expandable';
-
-        const header = document.createElement('div');
-        header.className = 'expander-header';
-        const caret = document.createElement('span');
-        caret.className = 'caret';
-        caret.textContent = '▸';
-        const title = document.createElement('span');
-        title.textContent = 'Thoughts (click to expand)';
-        const live = document.createElement('span');
-        live.className = 'live-dot';
+        const container = document.createElement("div");
+        container.className = "message bot expandable";
+        const header = document.createElement("div");
+        header.className = "expander-header";
+        const caret = document.createElement("span");
+        caret.className = "caret";
+        caret.textContent = "▸";
+        const title = document.createElement("span");
+        title.textContent = "Internal Monologue & Tool Log";
+        const live = document.createElement("span");
+        live.className = "live-dot";
         header.append(caret, title, live);
-
-        const body = document.createElement('div');
-        body.className = 'expander-body';
-
-        // Sections
-        const s1 = document.createElement('div');
-        s1.className = 'section';
-        s1.innerHTML = `<h4>Initial Reasoning</h4><div class="md" data-id="p1"></div>`;
-
-        const s15 = document.createElement('div');
-        s15.className = 'section';
-        s15.innerHTML = `<h4>Graph Connecting Phase</h4><div class="md" data-id="p15"></div>`;
-
-        const sTools = document.createElement('div');
-        sTools.className = 'section';
-        sTools.innerHTML = `<h4>Tool Calls</h4><div class="md" data-id="tools" class="mono dim"></div>`;
-
-        body.append(s1, s15, sTools);
+        const body = document.createElement("div");
+        body.className = "expander-body";
+        body.innerHTML = `
+          <div class="section"><h4>Phase 1: Initial Reflection</h4><div class="md" data-id="p1"></div></div>
+          <div class="section"><h4>Phase 1.5: Introspection</h4><div class="md" data-id="p15"></div></div>
+          <div class="section"><h4>Tool Calls</h4><div class="md" data-id="tools" class="mono dim"></div></div>
+        `;
         container.append(header, body);
         chatContainer.appendChild(container);
         chatContainer.scrollTop = chatContainer.scrollHeight;
-
-        // Toggle
         let expanded = false;
-        header.addEventListener('click', () => {
+        header.addEventListener("click", () => {
           expanded = !expanded;
-          container.classList.toggle('expanded', expanded);
-          caret.textContent = expanded ? '▾' : '▸';
-          title.textContent = expanded ? 'Thoughts (expanded)' : 'Thoughts (click to expand)';
+          container.classList.toggle("expanded", expanded);
+          caret.textContent = expanded ? "▾" : "▸";
+          title.textContent = expanded
+            ? "Internal Monologue & Tool Log"
+            : "Internal Monologue & Tool Log";
         });
-
         return {
-          container,
-          header,
-          body,
-          setLive(visible) { live.style.display = visible ? 'inline-block' : 'none'; },
-          setExpandedNow() { // open immediately if user clicks mid-run
-            if (!container.classList.contains('expanded')) {
-              container.classList.add('expanded');
-              caret.textContent = '▾';
-              title.textContent = 'Thoughts (expanded)';
-            }
+          setLive(visible) {
+            live.style.display = visible ? "inline-block" : "none";
           },
-          elP1() { return body.querySelector('[data-id="p1"]'); },
-          elP15() { return body.querySelector('[data-id="p15"]'); },
-          elTools() { return body.querySelector('[data-id="tools"]'); },
-        };
-      }
-
-      // Streaming final bubble updates w/ markdown
-      function createStreamingBotBubble() {
-        const div = appendMessageBubble({ html: `<div class="md dim">Generating…<span class="live-dot"></span></div>`, cls: 'bot' });
-        return {
-          update(markdown) {
-            div.querySelector('.md').innerHTML = marked.parse(markdown || '');
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+          elP1() {
+            return body.querySelector('[data-id="p1"]');
           },
-          done() {
-            const md = div.querySelector('.md');
-            if (md) md.classList.remove('dim');
-            const live = div.querySelector('.live-dot');
-            if (live) live.remove();
-          }
+          elP15() {
+            return body.querySelector('[data-id="p15"]');
+          },
+          elTools() {
+            return body.querySelector('[data-id="tools"]');
+          },
         };
       }
 
       function throttle(fn, ms) {
-        let t = 0, lastArgs = null, scheduled = false;
+        let t = 0,
+          lastArgs = null,
+          scheduled = false;
         return (...args) => {
           lastArgs = args;
           const now = performance.now();
-          const doRun = () => { scheduled = false; t = performance.now(); fn(...lastArgs); };
+          const doRun = () => {
+            scheduled = false;
+            t = performance.now();
+            fn(...lastArgs);
+          };
           if (!scheduled && now - t >= ms) doRun();
-          else if (!scheduled) { scheduled = true; setTimeout(doRun, ms - (now - t)); }
+          else if (!scheduled) {
+            scheduled = true;
+            setTimeout(doRun, ms - (now - t));
+          }
         };
       }
 
       async function sendMessage() {
         const input = userInputField.value.trim();
         if (!input) return;
-
-        // User bubble
-        appendMessageBubble({ html: marked.parse(input), cls: 'user' });
-        userInputField.value = '';
+        appendMessageBubble({ html: marked.parse(input), cls: "user" });
+        userInputField.value = "";
         autoResize();
-
-        // Thoughts bubble (expandable, clickable immediately)
         const thoughts = createExpandableThoughtsBubble();
-
-        // Final answer bubble (streams)
         const finalBubble = createStreamingBotBubble();
-
-        let p1Buf = '';
-        let p15Buf = '';
-        let toolsMarkdown = '';
-
+        let p1Buf = "",
+          p15Buf = "";
         const renderP1 = throttle(() => {
-          thoughts.elP1().innerHTML = marked.parse(p1Buf || '*…*');
+          thoughts.elP1().innerHTML = marked.parse(p1Buf || "*…*");
         }, 80);
-
         const renderP15 = throttle(() => {
-          thoughts.elP15().innerHTML = marked.parse(p15Buf || '*…*');
+          thoughts.elP15().innerHTML = marked.parse(p15Buf || "*…*");
         }, 80);
-
-        const renderTools = throttle(() => {
-          thoughts.elTools().innerHTML = marked.parse(toolsMarkdown || '_No tool calls yet._');
+        const renderTools = throttle((log) => {
+          thoughts.elTools().innerHTML = marked.parse(
+            formatToolCallsMarkdown(log) || "_No tool calls yet._"
+          );
         }, 120);
 
         try {
           await runStreamingFlow(input, {
-            onPrompt1Delta(chunk) {
+            onPrompt1Start: () => thoughts.setLive(true),
+            onPrompt1Delta: (chunk) => {
               p1Buf += chunk;
               renderP1();
             },
-            onPrompt1Start() {
-              thoughts.setLive(true);
+            onPrompt1ToolRun: (log) => {
+              renderTools(log);
+              sessionStorage.setItem("KNOWLEDGE_GRAPH_STATE", exportGraphJson());
             },
-            async onPrompt1ToolRun(logArray) {
-              toolsMarkdown = formatToolCallsMarkdown(logArray);
-              renderTools();
-            },
-            onPrompt1Done() {
-              renderP1();
-            },
-
-            onPrompt15Start() {
-              thoughts.setLive(true);
-            },
-            onPrompt15Delta(chunk) {
+            onPrompt1Done: () => renderP1(),
+            onPrompt15Start: () => thoughts.setLive(true),
+            onPrompt15Delta: (chunk) => {
               p15Buf += chunk;
               renderP15();
             },
-            async onPrompt15ToolRun(logArray) {
-              toolsMarkdown = formatToolCallsMarkdown(logArray);
-              renderTools();
+            onPrompt15ToolRun: (log) => {
+              renderTools(log);
+              sessionStorage.setItem("KNOWLEDGE_GRAPH_STATE", exportGraphJson());
             },
-            onPrompt15Done() {
-              renderP15();
-            },
-
-            onFinalStart() {
-              thoughts.setLive(false);
-            },
-            onFinalDelta(chunk, fullSoFar) {
-              finalBubble.update(fullSoFar);
-            },
-            onFinalDone() {
-              finalBubble.done();
-            }
+            onPrompt15Done: () => renderP15(),
+            onFinalStart: () => thoughts.setLive(false),
+            onFinalDelta: (chunk, full) => finalBubble.update(full),
+            onFinalDone: () => finalBubble.done(),
           });
-
         } catch (err) {
           finalBubble.update(`**Error:** ${err.message}`);
           finalBubble.done();
         }
       }
 
-      runButton.addEventListener('click', sendMessage);
-      userInputField.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-      });
+      function appendMessageBubble({ html = "", text = "", cls = "" }) {
+        const div = document.createElement("div");
+        div.className = `message ${cls}`.trim();
+        if (html) div.innerHTML = html;
+        else div.textContent = text;
+        chatContainer.appendChild(div);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return div;
+      }
+
+      function createStreamingBotBubble() {
+        const div = appendMessageBubble({
+          html: `<div class="md dim">Generating…<span class="live-dot"></span></div>`,
+          cls: "bot",
+        });
+        return {
+          update(markdown) {
+            div.querySelector(".md").innerHTML = marked.parse(markdown || "");
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+          },
+          done() {
+            const md = div.querySelector(".md");
+            if (md) md.classList.remove("dim");
+            const live = div.querySelector(".live-dot");
+            if (live) live.remove();
+          },
+        };
+      }
 
       function autoResize() {
-        userInputField.style.height = 'auto';
-        userInputField.style.height = userInputField.scrollHeight + 'px';
+        userInputField.style.height = "auto";
+        userInputField.style.height = userInputField.scrollHeight + "px";
       }
-      userInputField.addEventListener('input', autoResize);
+      userInputField.addEventListener("input", autoResize);
+      runButton.addEventListener("click", sendMessage);
+      userInputField.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
     </script>
   </body>
 </html>

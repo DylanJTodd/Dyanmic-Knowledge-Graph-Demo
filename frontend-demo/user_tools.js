@@ -1,5 +1,20 @@
 import { graph } from './tools.js';
 
+export function clearGraph() {
+  try {
+    graph.fromJSON(JSON.stringify({
+      nodes: [],
+      edges: [],
+      nodeCounter: 0,
+      nodeHistory: [],
+      edgeHistory: []
+    }));
+    return { status: 'ok' };
+  } catch (e) {
+    return { status: 'error', message: e.message };
+  }
+}
+
 export function saveGraph() {
   try {
     const json = graph.toJSON();
@@ -69,38 +84,20 @@ export function getGraphDiff(graphA, graphB) {
 
   const nodesA = nodeMap(graphA.nodes || []);
   const nodesB = nodeMap(graphB.nodes || []);
-
   const addedNodes = Object.entries(nodesB).filter(([id]) => !(id in nodesA)).map(([, n]) => n);
   const removedNodes = Object.entries(nodesA).filter(([id]) => !(id in nodesB)).map(([, n]) => n);
-  const updatedNodes = Object.entries(nodesB)
-    .filter(([id]) => id in nodesA && JSON.stringify(nodesB[id]) !== JSON.stringify(nodesA[id]))
-    .map(([, n]) => n);
+  const updatedNodes = Object.entries(nodesB).filter(([id]) => id in nodesA && JSON.stringify(nodesB[id]) !== JSON.stringify(nodesA[id])).map(([, n]) => n);
 
   const edgesA = edgeMap(graphA.edges || []);
   const edgesB = edgeMap(graphB.edges || []);
-
   const addedEdges = Object.entries(edgesB).filter(([k]) => !(k in edgesA)).map(([, e]) => e);
   const removedEdges = Object.entries(edgesA).filter(([k]) => !(k in edgesB)).map(([, e]) => e);
-  const updatedEdges = Object.entries(edgesB)
-    .filter(([k]) => k in edgesA && JSON.stringify(edgesB[k]) !== JSON.stringify(edgesA[k]))
-    .map(([, e]) => e);
+  const updatedEdges = Object.entries(edgesB).filter(([k]) => k in edgesA && JSON.stringify(edgesB[k]) !== JSON.stringify(edgesA[k])).map(([, e]) => e);
 
   return {
-    nodes: {
-      added: addedNodes,
-      removed: removedNodes,
-      updated: updatedNodes
-    },
-    edges: {
-      added: addedEdges,
-      removed: removedEdges,
-      updated: updatedEdges
-    }
+    nodes: { added: addedNodes, removed: removedNodes, updated: updatedNodes },
+    edges: { added: addedEdges, removed: removedEdges, updated: updatedEdges }
   };
-}
-
-export function getNodeHistory() {
-  return graph.getNodeHistory();
 }
 
 export function getEdgeHistory() {
