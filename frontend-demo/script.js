@@ -398,11 +398,3 @@ function safeParseJSON(s) {
     return String(s);
   }
 }
-
-function safeStringify(v) {
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
-  }
-}
