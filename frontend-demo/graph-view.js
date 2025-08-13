@@ -106,7 +106,7 @@ export function initGraphVisualization(containerId) {
             { selector: 'node.node-added, node.node-updated', style: { 'border-color': '#FFD700', 'border-width': '5px', 'border-style': 'solid', 'box-shadow': '0 0 20px #FFD700' } },
             { selector: 'edge.edge-added, edge.edge-updated', style: { 'line-color': '#FFD700', 'target-arrow-color': '#FFD700', 'width': '5px', 'z-index': 99 } },
             
-            // Selection styles - MUST be last to override other states
+            // Selection styles
             { selector: 'edge.highlighted, edge:selected', style: { 'line-color': '#00e5ff', 'target-arrow-color': '#00e5ff', 'width': 4, 'z-index': 100, 'text-opacity': 1 } },
             { selector: 'node:selected', style: { 'border-color': '#00e5ff', 'border-width': 4, 'border-opacity': 1, 'box-shadow': '0 0 20px #00e5ff' } },
             { selector: 'node.highlighted', style: { 'border-color': '#00e5ff', 'border-width': 5, 'border-opacity': 1, 'box-shadow': '0 0 20px #00e5ff' } },
@@ -189,7 +189,7 @@ export function renderGraph() {
             refresh: 20,
             fit: true,
             padding: 50,
-            randomize: true, // Randomize positions for a fresh layout
+            randomize: true,
             componentSpacing: 150,
             nodeRepulsion: 600000,
             edgeElasticity: 100,
