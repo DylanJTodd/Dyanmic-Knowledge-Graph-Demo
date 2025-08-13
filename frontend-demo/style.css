@@ -2,7 +2,7 @@
 
 :root {
   --primary-glow: #00e5ff;
-  --secondary-glow: #ff00e5;
+  --secondary-glow: #FFD700; /* Gold for diff highlight */
   --danger-glow: #ff4757;
 }
 
@@ -673,12 +673,4 @@ button:hover {
   100% {
     box-shadow: 0 0 0 0 rgba(255, 171, 0, 0);
   }
-}
-
-.node-added {
-  animation: pulse-glow-add 1.5s infinite;
-}
-
-.node-updated {
-  animation: pulse-glow-update 1.5s infinite;
 }
