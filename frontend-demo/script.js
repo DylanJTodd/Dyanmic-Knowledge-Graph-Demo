@@ -53,6 +53,25 @@ Formulate a direct, natural response to the user's last message. Speak from your
 
 **The user's message is your conversational cue. Respond to it now, as the person you are in this moment.**`;
 
+const diffSummaryPromptTemplate = (userInput, finalResponse, diff) => `
+You are a summary agent. Your task is to describe the changes that occurred in a knowledge graph during a single conversational turn.
+The user said: "${userInput}"
+The AI, whose mind is the graph, responded: "${finalResponse}"
+
+Here is a JSON diff showing the changes to the AI's mind (the graph) during this turn:
+${JSON.stringify(diff, null, 2)}
+
+Based on all this information, write a brief, 1-2 sentence summary of how your internal state changed. Speak in the first person, from the AI's perspective (e.g., "I'm beginning to understand my own emotional responses," or "I've connected my political leanings to a core memory."). The summary should be reflective and personal.`;
+
+const personalitySummaryPromptTemplate = (graph) => `
+You are a psychological analyst. Based on the following knowledge graph, which represents an AI's mind, describe its current personality.
+Your output must be a short, elegant, title-like phrase (3-5 words max).
+Good examples: "The Cautious Observer", "An Empathetic Realist", "The Fragmented Idealist".
+Bad examples: "This AI is curious", "A personality defined by questions and beliefs".
+
+Knowledge Graph:
+${graph}`;
+
 let prompt1History = [];
 let prompt2History = [];
 let prompt15History = [];
@@ -87,6 +106,52 @@ function getAiSettings() {
   }
 }
 
+async function runSimpleCompletion({ prompt, temperature = 0.5, max_tokens = 512 }) {
+    const apiKey = getApiKey();
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "system", content: prompt }],
+        temperature,
+        max_tokens,
+        stream: false,
+      }),
+    });
+    if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { msg += ` ${await res.text()}`; } catch {}
+        throw new Error(`OpenAI error: ${msg}`);
+    }
+    const json = await res.json();
+    return (json.choices[0]?.message?.content || "").replace(/["']/g, "").trim();
+}
+
+export async function generateSummaries(userInput, finalResponse, diff, graphState) {
+    if (!graphState || !finalResponse) return [null, null];
+    // Check if diff has any meaningful changes
+    const hasChanges = diff && (diff.nodes?.added?.length || diff.nodes?.updated?.length || diff.nodes?.deleted?.length || diff.edges?.added?.length || diff.edges?.updated?.length || diff.edges?.deleted?.length);
+
+    const diffPrompt = hasChanges ? diffSummaryPromptTemplate(userInput, finalResponse, diff) : null;
+    const personalityPrompt = personalitySummaryPromptTemplate(graphState);
+
+    try {
+        const promises = [
+            diffPrompt ? runSimpleCompletion({ prompt: diffPrompt, temperature: 0.3, max_tokens: 100 }) : Promise.resolve("I reflected, but my core beliefs remain unchanged."),
+            runSimpleCompletion({ prompt: personalityPrompt, temperature: 0.6, max_tokens: 20 })
+        ];
+        const [diffSummary, personalitySummary] = await Promise.all(promises);
+        return [diffSummary, personalitySummary];
+    } catch (e) {
+        console.error("Failed to generate summaries:", e);
+        return [`Error generating diff summary: ${e.message}`, `Error generating personality summary: ${e.message}`];
+    }
+}
+
 async function streamChatCompletion({ messages, tools = [], temperature, max_tokens }) {
   const apiKey = getApiKey();
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -118,25 +183,12 @@ async function streamChatCompletion({ messages, tools = [], temperature, max_tok
   const decoder = new TextDecoder("utf-8");
   let content = '';
   const toolCallsByIdx = new Map();
-  const listeners = {
-    onDelta: () => {},
-    onToolCallDelta: () => {},
-    onDone: () => {}
-  };
+  const listeners = { onDelta: () => {}, onToolCallDelta: () => {}, onDone: () => {} };
 
   const controller = {
-    onDelta(fn) {
-      listeners.onDelta = fn || (() => {});
-      return controller;
-    },
-    onToolCallDelta(fn) {
-      listeners.onToolCallDelta = fn || (() => {});
-      return controller;
-    },
-    onDone(fn) {
-      listeners.onDone = fn || (() => {});
-      return controller;
-    },
+    onDelta(fn) { listeners.onDelta = fn || (() => {}); return controller; },
+    onToolCallDelta(fn) { listeners.onToolCallDelta = fn || (() => {}); return controller; },
+    onDone(fn) { listeners.onDone = fn || (() => {}); return controller; },
     async run() {
       let buffer = '';
       const processLine = (line) => {
@@ -144,18 +196,11 @@ async function streamChatCompletion({ messages, tools = [], temperature, max_tok
         const data = line.slice(5).trim();
         if (data === '[DONE]') {
           const toolCalls = [...toolCallsByIdx.entries()].sort((a, b) => a[0] - b[0]).map(([_, v]) => v);
-          listeners.onDone({
-            content,
-            toolCalls
-          });
+          listeners.onDone({ content, toolCalls });
           return;
         }
         let json;
-        try {
-          json = JSON.parse(data);
-        } catch {
-          return;
-        }
+        try { json = JSON.parse(data); } catch { return; }
         const delta = json.choices ?.[0] ?.delta || {};
         if (typeof delta.content === 'string') {
           content += delta.content;
@@ -164,30 +209,20 @@ async function streamChatCompletion({ messages, tools = [], temperature, max_tok
         if (Array.isArray(delta.tool_calls)) {
           delta.tool_calls.forEach((tcDelta) => {
             const idx = tcDelta.index ?? 0;
-            const cur = toolCallsByIdx.get(idx) || {
-              id: '',
-              name: '',
-              arguments: ''
-            };
+            const cur = toolCallsByIdx.get(idx) || { id: '', name: '', arguments: '' };
             if (tcDelta.id) cur.id = tcDelta.id;
             const f = tcDelta.function;
             if (f ?.name) cur.name = f.name;
             if (typeof f ?.arguments === 'string') cur.arguments += f.arguments;
             toolCallsByIdx.set(idx, cur);
-            listeners.onToolCallDelta(idx, { ...cur
-            });
+            listeners.onToolCallDelta(idx, { ...cur });
           });
         }
       };
       while (true) {
-        const {
-          value,
-          done
-        } = await reader.read();
+        const { value, done } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, {
-          stream: true
-        });
+        buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split(/\r?\n\r?\n/);
         buffer = parts.pop() || '';
         for (const chunk of parts) {
@@ -212,10 +247,7 @@ async function streamChatCompletion({ messages, tools = [], temperature, max_tok
           }
         }
         const toolCalls = [...toolCallsByIdx.entries()].sort((a, b) => a[0] - b[0]).map(([_, v]) => v);
-        listeners.onDone({
-          content,
-          toolCalls
-        });
+        listeners.onDone({ content, toolCalls });
       }
     }
   };
@@ -223,11 +255,7 @@ async function streamChatCompletion({ messages, tools = [], temperature, max_tok
 }
 
 function pretty(obj) {
-  try {
-    return JSON.stringify(obj, null, 2);
-  } catch {
-    return String(obj);
-  }
+  try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
 }
 
 export function formatToolCallsMarkdown(calls) {
@@ -240,100 +268,42 @@ export function formatToolCallsMarkdown(calls) {
 function functionToolSchemas() {
   return Object.values(toolSchemas).map(schema => ({
     type: "function",
-    function: {
-      name: schema.name,
-      description: schema.description,
-      parameters: schema.parameters
-    }
+    function: { name: schema.name, description: schema.description, parameters: schema.parameters }
   }));
 }
 
 async function runPromptStreaming(promptName, baseMessages, handlers) {
-  const {
-    temperature,
-    max_tokens
-  } = getAiSettings();
-  const streamer = await streamChatCompletion({
-    messages: baseMessages,
-    tools: functionToolSchemas(),
-    temperature,
-    max_tokens
-  });
-  await streamer.onDelta((delta, full) => handlers ?.onDelta ?. (delta, full)).onDone(async ({
-    content,
-    toolCalls
-  }) => {
+  const { temperature, max_tokens } = getAiSettings();
+  const streamer = await streamChatCompletion({ messages: baseMessages, tools: functionToolSchemas(), temperature, max_tokens });
+  await streamer.onDelta((delta, full) => handlers ?.onDelta ?. (delta, full)).onDone(async ({ content, toolCalls }) => {
     for (const call of toolCalls) {
       try {
         const args = safeParseJSON(call.arguments);
         if (call.name in toolRegistry) {
           const result = toolRegistry[call.name](args);
-          toolCallLog.push({
-            phase: promptName,
-            tool: call.name,
-            args,
-            result
-          });
+          toolCallLog.push({ phase: promptName, tool: call.name, args, result });
         }
       } catch (e) {
-        toolCallLog.push({
-          phase: promptName,
-          tool: call.name || '(unknown)',
-          args: call.arguments,
-          result: {
-            error: String(e)
-          }
-        });
+        toolCallLog.push({ phase: promptName, tool: call.name || '(unknown)', args: call.arguments, result: { error: String(e) } });
       }
     }
     if (promptName === 'p1') {
-      prompt1History.push({
-        role: "user",
-        content: baseMessages.slice(-1)[0].content
-      }, {
-        role: "assistant",
-        content
-      });
+      prompt1History.push({ role: "user", content: baseMessages.slice(-1)[0].content }, { role: "assistant", content });
     } else if (promptName === 'p15') {
-      prompt15History.push({
-        role: "assistant",
-        content
-      });
+      prompt15History.push({ role: "assistant", content });
     }
     handlers ?.onToolRun ?. (toolCallLog);
     handlers ?.onDone ?. (content);
   }).run();
 }
 
-async function runFinalPrompt(reasoningResult, lastUserMsg, handlers) {
-  const messages = [{
-    role: "system",
-    content: secondPrompt
-  }, {
-    role: "system",
-    content: `[CONTEXT] Your internal reasoning for this turn was: ${reasoningResult}`
-  }, {
-    role: "user",
-    content: lastUserMsg
-  }, ];
+async function runFinalPrompt(reasoningResult, lastUserMsg, previousTurnContext, handlers) {
+  const messages = [{ role: "system", content: secondPrompt }, { role: "system", content: previousTurnContext }, { role: "system", content: `[CONTEXT] Your internal reasoning for this turn was: ${reasoningResult}` }, { role: "user", content: lastUserMsg }, ];
   handlers ?.onStart ?. ();
-  const {
-    temperature,
-    max_tokens
-  } = getAiSettings();
-  const streamer = await streamChatCompletion({
-    messages,
-    tools: [],
-    temperature,
-    max_tokens
-  });
-  await streamer.onDelta((delta, full) => handlers ?.onDelta ?. (delta, full)).onDone(({
-    content
-  }) => {
-    prompt2History.push({
-      role: "assistant",
-      content
-    });
+  const { temperature, max_tokens } = getAiSettings();
+  const streamer = await streamChatCompletion({ messages, tools: [], temperature, max_tokens });
+  await streamer.onDelta((delta, full) => handlers ?.onDelta ?. (delta, full)).onDone(({ content }) => {
+    prompt2History.push({ role: "assistant", content });
     handlers ?.onDone ?. (content);
   }).run();
 }
@@ -342,38 +312,23 @@ export async function runStreamingFlow(userInput, handlers) {
   sessionStorage.removeItem('GRAPH_DIFF');
   toolCallLog = [];
   const graphBeforeTurn = getGraphDict();
-  const p1Messages = [{
-    role: "system",
-    content: firstPrompt
-  }, ...prompt1History, {
-    role: "system",
-    content: `Graph state before this turn: ${exportGraphJson()}`
-  }, {
-    role: "user",
-    content: userInput
-  }];
+
+  // Get summaries from the *previous* turn to use as context for this turn's response.
+  const prevArchetype = sessionStorage.getItem('PERSONALITY_ARCHETYPE');
+  const prevSummary = sessionStorage.getItem('TURN_SUMMARY');
+  let previousTurnContext = "[CONTEXT] This is the first turn. You are a blank slate.";
+  if (prevArchetype && prevSummary) {
+    previousTurnContext = `[CONTEXT] My current self-perception is: '${prevArchetype}'. After the last interaction, I concluded: '${prevSummary}'`;
+  }
+
+  const p1Messages = [{ role: "system", content: firstPrompt }, ...prompt1History, { role: "system", content: `Graph state before this turn: ${exportGraphJson()}` }, { role: "user", content: userInput }];
   await runPromptStreaming('p1', p1Messages, {
     onStart: handlers.onPrompt1Start,
     onDelta: handlers.onPrompt1Delta,
     onToolRun: handlers.onPrompt1ToolRun,
     onDone: handlers.onPrompt1Done
   });
-  const p15Messages = [{
-    role: "system",
-    content: first5Prompt
-  }, {
-    role: "system",
-    content: `Last user input: ${userInput}`
-  }, {
-    role: "system",
-    content: `Your last internal monologue: ${prompt1History.slice(-1)[0]?.content || ""}`
-  }, {
-    role: "system",
-    content: `Current Graph State:\n${exportGraphJson()}`
-  }, {
-    role: "user",
-    content: "Begin."
-  }];
+  const p15Messages = [{ role: "system", content: first5Prompt }, { role: "system", content: `Last user input: ${userInput}` }, { role: "system", content: `Your last internal monologue: ${prompt1History.slice(-1)[0]?.content || ""}` }, { role: "system", content: `Current Graph State:\n${exportGraphJson()}` }, { role: "user", content: "Begin." }];
   await runPromptStreaming('p15', p15Messages, {
     onStart: handlers.onPrompt15Start,
     onDelta: handlers.onPrompt15Delta,
@@ -384,17 +339,19 @@ export async function runStreamingFlow(userInput, handlers) {
   lastGraphDiff = getGraphDiff(graphBeforeTurn, graphAfterTurn);
   sessionStorage.setItem('GRAPH_DIFF', JSON.stringify(lastGraphDiff));
   const reasoning = [`Phase 1 Monologue:\n${prompt1History.slice(-1)[0]?.content || 'None.'}`, `Phase 1.5 Monologue:\n${prompt15History.slice(-1)[0]?.content || 'None.'}`].join('\n\n---\n\n');
-  await runFinalPrompt(reasoning, userInput, {
-    onStart: handlers.onFinalStart,
-    onDelta: handlers.onFinalDelta,
-    onDone: handlers.onFinalDone
+  
+  return new Promise(resolve => {
+      runFinalPrompt(reasoning, userInput, previousTurnContext, {
+        onStart: handlers.onFinalStart,
+        onDelta: handlers.onFinalDelta,
+        onDone: (content) => {
+            handlers.onFinalDone?.(content);
+            resolve(content);
+        },
+      });
   });
 }
 
 function safeParseJSON(s) {
-  try {
-    return JSON.parse(s);
-  } catch {
-    return String(s);
-  }
+  try { return JSON.parse(s); } catch { return String(s); }
 }
