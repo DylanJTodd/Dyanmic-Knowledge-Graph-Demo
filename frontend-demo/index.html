@@ -58,6 +58,7 @@
     <div id="chatView">
       <div id="chatContainer"></div>
       <div id="inputArea">
+        <small class="api-cost-notice">Note: Each message uses the OpenAI API and may incur costs.</small>
         <div class="inputWrapper">
           <textarea
             id="userInput"
@@ -71,16 +72,32 @@
 
     <!-- Graph Area -->
     <div id="graphView">
+      <div id="personality-archetype"></div>
+      <div id="turn-summary"></div>
       <div id="cy"></div>
       <div id="graph-controls">
         <button id="home-btn" title="Center Graph">⌂</button>
+        <button id="filter-btn" title="Filter Nodes">🔍</button>
         <button id="add-node-btn">+ Add Node</button>
         <button id="cancel-edge-btn" style="display: none">Cancel Edge</button>
+      </div>
+      <div id="filter-panel" style="display: none;">
+        <input type="text" id="filter-label-input" placeholder="Search label...">
+        <select id="filter-type-select">
+          <option value="">All Types</option>
+        </select>
+        <input type="number" id="filter-connections-input" placeholder="Min connections" min="0">
+        <button id="apply-filter-btn">Apply</button>
+        <button id="clear-filter-btn">Clear</button>
       </div>
       <div id="info-panel" class="info-panel" style="display: none">
         <button id="info-panel-close" class="info-panel__close">&times;</button>
         <div id="info-panel-content"></div>
         <div id="info-panel-actions"></div>
+      </div>
+      <div id="graph-legend">
+        <div class="legend-item"><span class="legend-color gold"></span> Changed this turn</div>
+        <div class="legend-item"><span class="legend-color blue"></span> Selected & connected</div>
       </div>
     </div>
 
@@ -98,9 +115,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
     <script type="module">
-      import { runStreamingFlow, formatToolCallsMarkdown } from "./script.js?cachebust=17";
-      import { exportGraphJson, clearGraph } from "./user_tools.js?cachebust=17";
-      import { initGraphVisualization, renderGraph } from "./graph-view.js?cachebust=17";
+      import { runStreamingFlow, generateSummaries, formatToolCallsMarkdown } from "./script.js?cachebust=18";
+      import { exportGraphJson, clearGraph } from "./user_tools.js?cachebust=18";
+      import { initGraphVisualization, renderGraph } from "./graph-view.js?cachebust=18";
       import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 
       const chatView = document.getElementById("chatView");
@@ -118,14 +135,39 @@
       const userInputField = document.getElementById("userInput");
       const runButton = document.getElementById("runButton");
       const chatContainer = document.getElementById("chatContainer");
+      const graphControlsButtons = document.querySelectorAll("#graph-controls button");
+
+      let isBotResponding = false;
 
       //Reset state
       window.addEventListener("load", () => {
         clearGraph();
         sessionStorage.removeItem("KNOWLEDGE_GRAPH_STATE");
         sessionStorage.removeItem("GRAPH_DIFF");
+        sessionStorage.removeItem("PERSONALITY_ARCHETYPE");
+        sessionStorage.removeItem("TURN_SUMMARY");
         loadSettings();
+        updateGraphViewButtonState();
       });
+
+      function isGraphEmpty() {
+        const graphJSON = sessionStorage.getItem('KNOWLEDGE_GRAPH_STATE');
+        if (!graphJSON) return true;
+        try {
+          const graph = JSON.parse(graphJSON);
+          return !graph.nodes || graph.nodes.length === 0;
+        } catch {
+          return true;
+        }
+      }
+
+      function updateGraphViewButtonState() {
+          graphViewBtn.disabled = isBotResponding || isGraphEmpty();
+      }
+
+      function setGraphControlsEnabled(enabled) {
+          graphControlsButtons.forEach(btn => btn.disabled = !enabled);
+      }
 
       function loadSettings() {
         const storedKey = localStorage.getItem("OPENAI_API_KEY");
@@ -151,7 +193,6 @@
         );
       }
 
-      
       setApiKeyBtn.addEventListener("click", () => {
         const key = apiKeyInput.value.trim();
         if (!key.startsWith("sk-")) {
@@ -160,11 +201,21 @@
         }
         localStorage.setItem("OPENAI_API_KEY", key);
         settingsPanel.style.display = "none";
+
+        if (graphView.style.display === "flex") {
+            setGraphControlsEnabled(true);
+        }
       });
+
       gearButton.addEventListener("click", () => {
-        settingsPanel.style.display =
-          settingsPanel.style.display === "block" ? "none" : "block";
+        const isOpening = settingsPanel.style.display !== "block";
+        settingsPanel.style.display = isOpening ? "block" : "none";
+        
+        if (graphView.style.display === "flex") {
+            setGraphControlsEnabled(!isOpening);
+        }
       });
+
       temperatureSlider.addEventListener("input", () => {
         temperatureValueSpan.textContent = temperatureSlider.value;
         saveAiSettings();
@@ -180,8 +231,17 @@
         graphView.style.display = "none";
         chatViewBtn.classList.add("active");
         graphViewBtn.classList.remove("active");
+        setGraphControlsEnabled(true); // Reset when leaving view
       });
       graphViewBtn.addEventListener("click", () => {
+        if (isBotResponding) {
+          alert("Please wait for the current response to complete before switching views.");
+          return;
+        }
+        if (isGraphEmpty()) {
+          alert("The knowledge graph is empty. Send a message to start building it.");
+          return;
+        }
         chatView.style.display = "none";
         graphView.style.display = "flex";
         chatViewBtn.classList.remove("active");
@@ -191,6 +251,9 @@
           graphInitialized = true;
         }
         renderGraph();
+        
+        const settingsAreOpen = settingsPanel.style.display === 'block';
+        setGraphControlsEnabled(!settingsAreOpen);
       });
 
       function createExpandableThoughtsBubble() {
@@ -221,97 +284,92 @@
           expanded = !expanded;
           container.classList.toggle("expanded", expanded);
           caret.textContent = expanded ? "▾" : "▸";
-          title.textContent = expanded
-            ? "Internal Monologue & Tool Log"
-            : "Internal Monologue & Tool Log";
         });
         return {
-          setLive(visible) {
-            live.style.display = visible ? "inline-block" : "none";
-          },
-          elP1() {
-            return body.querySelector('[data-id="p1"]');
-          },
-          elP15() {
-            return body.querySelector('[data-id="p15"]');
-          },
-          elTools() {
-            return body.querySelector('[data-id="tools"]');
-          },
+          setLive(visible) { live.style.display = visible ? "inline-block" : "none"; },
+          updateTitle(newText) { title.textContent = newText; },
+          elP1() { return body.querySelector('[data-id="p1"]'); },
+          elP15() { return body.querySelector('[data-id="p15"]'); },
+          elTools() { return body.querySelector('[data-id="tools"]'); },
         };
       }
 
       function throttle(fn, ms) {
-        let t = 0,
-          lastArgs = null,
-          scheduled = false;
+        let t = 0, lastArgs = null, scheduled = false;
         return (...args) => {
           lastArgs = args;
           const now = performance.now();
-          const doRun = () => {
-            scheduled = false;
-            t = performance.now();
-            fn(...lastArgs);
-          };
+          const doRun = () => { scheduled = false; t = performance.now(); fn(...lastArgs); };
           if (!scheduled && now - t >= ms) doRun();
-          else if (!scheduled) {
-            scheduled = true;
-            setTimeout(doRun, ms - (now - t));
-          }
+          else if (!scheduled) { scheduled = true; setTimeout(doRun, ms - (now - t)); }
         };
       }
 
       async function sendMessage() {
         const input = userInputField.value.trim();
-        if (!input) return;
+        if (!input || isBotResponding) return;
+
+        isBotResponding = true;
+        runButton.disabled = true;
+        updateGraphViewButtonState();
+
         appendMessageBubble({ html: marked.parse(input), cls: "user" });
         userInputField.value = "";
         autoResize();
+
         const thoughts = createExpandableThoughtsBubble();
         const finalBubble = createStreamingBotBubble();
-        let p1Buf = "",
-          p15Buf = "";
-        const renderP1 = throttle(() => {
-          thoughts.elP1().innerHTML = marked.parse(p1Buf || "*…*");
-        }, 80);
-        const renderP15 = throttle(() => {
-          thoughts.elP15().innerHTML = marked.parse(p15Buf || "*…*");
-        }, 80);
-        const renderTools = throttle((log) => {
-          thoughts.elTools().innerHTML = marked.parse(
-            formatToolCallsMarkdown(log) || "_No tool calls yet._"
-          );
-        }, 120);
+        
+        let p1Buf = "", p15Buf = "";
+        const renderP1 = throttle(() => thoughts.elP1().innerHTML = marked.parse(p1Buf || "*…*"), 80);
+        const renderP15 = throttle(() => thoughts.elP15().innerHTML = marked.parse(p15Buf || "*…*"), 80);
+        const renderTools = throttle((log) => thoughts.elTools().innerHTML = marked.parse(formatToolCallsMarkdown(log) || "_No tool calls yet._"), 120);
+        
+        const startTime = performance.now();
+        let timerInterval = null;
 
         try {
-          await runStreamingFlow(input, {
-            onPrompt1Start: () => thoughts.setLive(true),
-            onPrompt1Delta: (chunk) => {
-              p1Buf += chunk;
-              renderP1();
+          const finalContent = await runStreamingFlow(input, {
+            onPrompt1Start: () => {
+              thoughts.setLive(true);
+              timerInterval = setInterval(() => {
+                  const duration = ((performance.now() - startTime) / 1000).toFixed(1);
+                  thoughts.updateTitle(`Thinking for ${duration}s...`);
+              }, 100);
             },
-            onPrompt1ToolRun: (log) => {
-              renderTools(log);
-              sessionStorage.setItem("KNOWLEDGE_GRAPH_STATE", exportGraphJson());
-            },
+            onPrompt1Delta: (chunk) => { p1Buf += chunk; renderP1(); },
+            onPrompt1ToolRun: (log) => { renderTools(log); sessionStorage.setItem("KNOWLEDGE_GRAPH_STATE", exportGraphJson()); },
             onPrompt1Done: () => renderP1(),
             onPrompt15Start: () => thoughts.setLive(true),
-            onPrompt15Delta: (chunk) => {
-              p15Buf += chunk;
-              renderP15();
-            },
-            onPrompt15ToolRun: (log) => {
-              renderTools(log);
-              sessionStorage.setItem("KNOWLEDGE_GRAPH_STATE", exportGraphJson());
-            },
+            onPrompt15Delta: (chunk) => { p15Buf += chunk; renderP15(); },
+            onPrompt15ToolRun: (log) => { renderTools(log); sessionStorage.setItem("KNOWLEDGE_GRAPH_STATE", exportGraphJson()); },
             onPrompt15Done: () => renderP15(),
-            onFinalStart: () => thoughts.setLive(false),
+            onFinalStart: () => {
+              clearInterval(timerInterval);
+              thoughts.setLive(false);
+              const endTime = performance.now();
+              const duration = ((endTime - startTime) / 1000).toFixed(2);
+              thoughts.updateTitle(`Internal Monologue & Tool Log (Thinking took ${duration}s)`);
+            },
             onFinalDelta: (chunk, full) => finalBubble.update(full),
             onFinalDone: () => finalBubble.done(),
           });
+
+          const graphDiff = JSON.parse(sessionStorage.getItem('GRAPH_DIFF') || '{}');
+          const graphState = sessionStorage.getItem('KNOWLEDGE_GRAPH_STATE');
+          const [diffSummary, personalitySummary] = await generateSummaries(input, finalContent, graphDiff, graphState);
+          
+          sessionStorage.setItem('TURN_SUMMARY', diffSummary || '');
+          sessionStorage.setItem('PERSONALITY_ARCHETYPE', personalitySummary || '');
+
         } catch (err) {
           finalBubble.update(`**Error:** ${err.message}`);
           finalBubble.done();
+        } finally {
+            if(timerInterval) clearInterval(timerInterval);
+            isBotResponding = false;
+            runButton.disabled = false;
+            updateGraphViewButtonState();
         }
       }
 
