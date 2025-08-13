@@ -313,7 +313,6 @@ export async function runStreamingFlow(userInput, handlers) {
   toolCallLog = [];
   const graphBeforeTurn = getGraphDict();
 
-  // Get summaries from the *previous* turn to use as context for this turn's response.
   const prevArchetype = sessionStorage.getItem('PERSONALITY_ARCHETYPE');
   const prevSummary = sessionStorage.getItem('TURN_SUMMARY');
   let previousTurnContext = "[CONTEXT] This is the first turn. You are a blank slate.";

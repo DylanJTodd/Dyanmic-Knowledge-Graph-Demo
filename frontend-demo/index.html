@@ -231,7 +231,7 @@
         graphView.style.display = "none";
         chatViewBtn.classList.add("active");
         graphViewBtn.classList.remove("active");
-        setGraphControlsEnabled(true); // Reset when leaving view
+        setGraphControlsEnabled(true);
       });
       graphViewBtn.addEventListener("click", () => {
         if (isBotResponding) {
