@@ -57,8 +57,14 @@ body {
   padding: 0.5em 1em;
   color: #e3d8f1;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease;
   font-size: 0.9rem;
+}
+
+#viewSwitcher button:disabled {
+  color: #7b6a8c;
+  cursor: not-allowed;
+  background: #220831;
 }
 
 #viewSwitcher button.active {
@@ -66,7 +72,7 @@ body {
   color: white;
 }
 
-#viewSwitcher button:not(.active):hover {
+#viewSwitcher button:not(.active):hover:not(:disabled) {
   background: #3f1f5e;
 }
 
@@ -84,6 +90,36 @@ body {
   position: relative;
 }
 
+#personality-archetype {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 51;
+  color: #fff;
+  font-size: 1.6rem;
+  font-weight: 600;
+  text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 15px var(--primary-glow);
+  pointer-events: none;
+  text-align: center;
+  width: 100%;
+}
+
+#turn-summary {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 51;
+  color: #e3d8f1;
+  font-size: 0.9rem;
+  font-style: italic;
+  max-width: 300px;
+  text-shadow: 0 0 5px #000;
+  pointer-events: none;
+  opacity: 0.8;
+  text-align: right;
+}
+
 #cy {
   width: 100%;
   height: 100%;
@@ -93,19 +129,26 @@ body {
 #graph-controls {
   position: absolute;
   top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 20px;
   z-index: 50;
   display: flex;
   gap: 10px;
+  background: rgba(26,0,26,0.7);
+  backdrop-filter: blur(5px);
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid #44224d;
 }
 
 #graph-controls button {
   background: #2b0a3d;
   border: 1px solid #5b3c7a;
 }
-
-#graph-controls button:hover {
+#graph-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+#graph-controls button:hover:not(:disabled) {
   background: #3f1f5e;
 }
 
@@ -114,6 +157,40 @@ body {
   color: #111;
   font-weight: bold;
 }
+
+#filter-panel {
+  position: absolute;
+  top: 75px; /* Below controls */
+  right: 20px;
+  z-index: 49;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(43, 10, 61, 0.85);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #5b3c7a;
+  backdrop-filter: blur(5px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+}
+#filter-panel input, #filter-panel select, #filter-panel button {
+  width: 100%;
+  box-sizing: border-box;
+}
+#filter-panel input, #filter-panel select {
+  background: #1e1028;
+  color: #e3d8f1;
+  border: 1px solid #5b3c7a;
+  padding: 0.4em 0.6em;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 0.9em;
+}
+#filter-panel button {
+  font-size: 0.9em;
+  padding: 0.4em 0.8em;
+}
+
 
 .info-panel {
   position: absolute;
@@ -202,6 +279,42 @@ body {
   background-color: #a12b39;
 }
 
+#graph-legend {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 50;
+  background: rgba(26,0,26,0.7);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #44224d;
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.legend-item:last-child {
+  margin-bottom: 0;
+}
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 8px;
+  display: inline-block;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.legend-color.gold {
+  background-color: var(--secondary-glow);
+}
+.legend-color.blue {
+  background-color: var(--primary-glow);
+}
+
+
 #settingsPanel {
   position: absolute;
   top: 70px;
@@ -212,7 +325,7 @@ body {
   border-radius: 8px;
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   display: none;
-  z-index: 10;
+  z-index: 101;
   width: 300px;
   max-width: 90%;
 }
@@ -394,6 +507,12 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: 16px 16px 0 0;
     border-bottom: none;
   }
+  #personality-archetype { font-size: 1.2rem; top: 10px; }
+  #turn-summary { display: none; }
+  #graph-controls { top: 15px; right: 15px; }
+  #filter-panel { top: 65px; right: 15px; }
+  #graph-legend { font-size: 0.7rem; bottom: 10px; left: 10px; }
+
 }
 
 #chatContainer {
@@ -435,6 +554,15 @@ input[type="range"]::-webkit-slider-thumb {
   border-top: 1px solid #44224d;
 }
 
+.api-cost-notice {
+  display: block;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #e3d8f1;
+  opacity: 0.5;
+  padding-bottom: 0.5em;
+}
+
 .inputWrapper {
   position: relative;
   width: 100%;
@@ -473,10 +601,15 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer;
   padding: 0;
   line-height: 1;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, color 0.2s ease;
 }
 
-#runButton:hover {
+#runButton:disabled {
+  color: #666;
+  cursor: not-allowed;
+}
+
+#runButton:hover:not(:disabled) {
   transform: translateY(-50%) scale(1.2);
 }
 
