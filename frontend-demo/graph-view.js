@@ -1,4 +1,3 @@
-// graph-view.js
 import { BeliefGraph, BeliefNode } from './knowledge-graph.js';
 import { graph } from './tools.js';
 
@@ -11,7 +10,6 @@ const modalBody = document.getElementById('modal-body'); const modalSaveBtn = do
 const modalCancelBtn = document.getElementById('modal-cancel-btn');
 let onModalSave = null;
 
-// REVISED: Darker, less saturated color palette
 const typeColorMap = [ '#311b92', '#4a148c', '#004d40', '#b71c1c', '#bf360c', '#3e2723', '#1b5e20', '#880e4f', '#263238', '#0d47a1' ];
 function djb2Hash(str) { let hash = 5381; for (let i = 0; i < str.length; i++) { hash = (hash * 33) ^ str.charCodeAt(i); } return hash; }
 function stringToColor(str) { if (!str) return typeColorMap[8]; const hash = djb2Hash(str.toLowerCase()); return typeColorMap[Math.abs(hash) % typeColorMap.length]; }
@@ -24,7 +22,7 @@ function saveGraphState() { sessionStorage.setItem('KNOWLEDGE_GRAPH_STATE', grap
 function showInfoPanel(element) {
     const data = element.data(); let content = ''; infoPanelActions.innerHTML = '';
     for (const [key, value] of Object.entries(data)) {
-        if (key.startsWith('_') || (key === 'id' && element.isEdge())) continue;
+        if (key.startsWith('_') || ['id', 'source', 'target'].includes(key)) continue;
         let displayValue = (typeof value === 'object' && value !== null) ? JSON.stringify(value, null, 2) : value;
         content += `<div class="attr"><span class="attr-key">${key.replace(/_/g, ' ')}</span><pre class="attr-value">${displayValue}</pre></div>`;
     }
@@ -32,23 +30,28 @@ function showInfoPanel(element) {
     if (element.isNode()) {
         infoPanelActions.innerHTML = `<button id="start-edge-btn" class="action-btn">Connect...</button><button id="delete-node-btn" class="action-btn delete-btn">Delete Node</button>`;
         document.getElementById('start-edge-btn').onclick = () => startEdgeCreation(data.id);
-        document.getElementById('delete-node-btn').onclick = () => { if (confirm(`Delete node "${data.label}"?`)) { graph.removeNode(data.id); saveGraphState(); } };
+        document.getElementById('delete-node-btn').onclick = () => { if (confirm(`Delete node "${data.label}"?`)) { graph.removeNode(data.id); saveGraphState(); hideInfoPanel(); } };
     } else if (element.isEdge()) {
         infoPanelActions.innerHTML = `<button id="delete-edge-btn" class="action-btn delete-btn">Delete Edge</button>`;
-        document.getElementById('delete-edge-btn').onclick = () => { if (confirm(`Delete edge "${data.label}"?`)) { graph.removeEdge(data.source, data.target, data.label); saveGraphState(); } };
+        document.getElementById('delete-edge-btn').onclick = () => { if (confirm(`Delete edge "${data.label}"?`)) { graph.removeEdge(data.source, data.target, data.label); saveGraphState(); hideInfoPanel(); } };
     }
     infoPanel.style.display = 'flex';
 }
-function hideInfoPanel() { infoPanel.style.display = 'none'; cancelEdgeCreation(); }
+function hideInfoPanel() {
+    infoPanel.style.display = 'none';
+    cy.elements().removeClass('selected highlighted dimmed');
+}
 function showModal(title, bodyHtml, onSaveCallback) {
     modalTitle.textContent = title; modalBody.innerHTML = bodyHtml; onModalSave = onSaveCallback; modalOverlay.style.display = 'flex';
     const confidenceSlider = document.getElementById('node-confidence'); const confidenceValue = document.getElementById('confidence-value');
     if (confidenceSlider && confidenceValue) { confidenceSlider.addEventListener('input', () => confidenceValue.textContent = confidenceSlider.value); }
+    const edgeConfidenceSlider = document.getElementById('edge-confidence'); const edgeConfidenceValue = document.getElementById('edge-confidence-value');
+    if (edgeConfidenceSlider && edgeConfidenceValue) { edgeConfidenceSlider.addEventListener('input', () => edgeConfidenceValue.textContent = edgeConfidenceSlider.value); }
 }
 function hideModal() { modalOverlay.style.display = 'none'; onModalSave = null; }
 
 function handleAddNode() {
-    showModal('Add New Node', `<div class="form-group"><label for="node-label">Label (a full sentence)</label><input type="text" id="node-label" placeholder="e.g., I believe trust must be earned."></div><div class="form-group"><label for="node-type">Type (e.g., belief, emotion, question)</label><input type="text" id="node-type" placeholder="belief"></div><div class="form-group"><label for="node-confidence">Confidence: <span id="confidence-value">0.5</span></label><input type="range" id="node-confidence" min="0" max="1" step="0.05" value="0.5"></div>`, 
+    showModal('Add New Node', `<div class="form-group"><label for="node-label">Label (a full sentence)</label><input type="text" id="node-label" placeholder="e.g., I believe trust must be earned."></div><div class="form-group"><label for="node-type">Type (e.g., belief, emotion, question)</label><input type="text" id="node-type" placeholder="belief"></div><div class="form-group"><label for="node-confidence">Confidence: <span id="confidence-value">0.5</span></label><input type="range" id="node-confidence" min="0" max="1" step="0.05" value="0.5"></div>`,
     () => {
         const label = document.getElementById('node-label').value.trim(); const type = document.getElementById('node-type').value.trim() || 'belief'; const confidence = parseFloat(document.getElementById('node-confidence').value);
         if (!label) { alert('Label cannot be empty.'); return; }
@@ -57,48 +60,62 @@ function handleAddNode() {
 }
 function startEdgeCreation(sourceId) {
     edgeSourceNode = sourceId;
-    hideInfoPanel();
-    cy.elements().removeClass('selected highlighted');
+    infoPanel.style.display = 'none';
+    cy.elements().removeClass('selected highlighted dimmed');
     cy.$id(sourceId).addClass('selected');
     cy.nodes().not(`[id = "${sourceId}"]`).addClass('highlighted');
     cancelEdgeBtn.style.display = 'block'; addNodeBtn.style.display = 'none';
-    cancelEdgeBtn.textContent = 'Connecting...';
+    cancelEdgeBtn.textContent = 'Cancel Connecting';
 }
 function cancelEdgeCreation() {
     if (!edgeSourceNode) return;
     edgeSourceNode = null;
-    cy.elements().removeClass('selected highlighted');
+    cy.elements().removeClass('selected highlighted dimmed');
     cancelEdgeBtn.style.display = 'none'; addNodeBtn.style.display = 'block';
     cancelEdgeBtn.textContent = 'Cancel Edge';
 }
 function completeEdgeCreation(targetId) {
     if (!edgeSourceNode || edgeSourceNode === targetId) { cancelEdgeCreation(); return; }
-    showModal('Add New Edge', `<div class="form-group"><label for="edge-label">Label (relationship)</label><input type="text" id="edge-label" placeholder="e.g., reinforces, contradicts"></div>`, () => {
-        const label = document.getElementById('edge-label').value.trim(); if (!label) { alert('Label cannot be empty.'); return; }
-        graph.addEdge(edgeSourceNode, targetId, label, 1.0);
+    const modalHtml = `
+        <div class="form-group"><label for="edge-label">Label (relationship)</label><input type="text" id="edge-label" placeholder="e.g., reinforces, contradicts"></div>
+        <div class="form-group"><label for="edge-confidence">Confidence: <span id="edge-confidence-value">1.0</span></label><input type="range" id="edge-confidence" min="0" max="1" step="0.05" value="1.0"></div>
+    `;
+    showModal('Add New Edge', modalHtml, () => {
+        const label = document.getElementById('edge-label').value.trim();
+        const confidence = parseFloat(document.getElementById('edge-confidence').value);
+        if (!label) { alert('Label cannot be empty.'); return; }
+        graph.addEdge(edgeSourceNode, targetId, label, confidence);
         saveGraphState(); hideModal(); cancelEdgeCreation();
     });
 }
 
 export function initGraphVisualization(containerId) {
     if (cy) return;
+    const homeBtn = document.getElementById('home-btn');
     cy = cytoscape({
         container: document.getElementById(containerId), autoungrabify: true,
         style: [
-            { selector: 'node', style: { 'shape': 'ellipse', 'label': 'data(type)', 'text-valign': 'center', 'text-halign': 'center', 'color': '#f0e6ff', 'font-size': '16px', 'font-weight': 'bold', 'width': '120px', 'height': '120px', 'background-color': getNodeColor, 'background-image': (node) => createGradientUri(getNodeColor(node)), 'background-fit': 'cover', 'border-width': 3, 'border-color': (node) => adjustColor(getNodeColor(node), 0.5), 'border-opacity': 0.8, 'transition-property': 'border-width, border-color, border-opacity, box-shadow', 'transition-duration': '0.3s' } },
-            { selector: 'edge', style: { 'width': 2.5, 'line-color': '#5b3c7a', 'target-arrow-color': '#5b3c7a', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'transition-property': 'line-color, target-arrow-color' } },
-            { selector: '.selected', style: { 'border-color': 'var(--primary-glow)', 'border-opacity': 1, 'border-width': 4 } },
-            { selector: '.highlighted', style: { 'border-color': 'var(--secondary-glow)', 'border-opacity': 1 } },
-            { selector: '.node-added, .edge-added', style: { 'animation': 'pulse-glow-add 1.5s infinite' } },
-            { selector: '.node-updated, .edge-updated', style: { 'animation': 'pulse-glow-update 1.5s infinite' } },
-            { selector: '.edge-added', style: { 'line-color': 'var(--primary-glow)', 'target-arrow-color': 'var(--primary-glow)' } },
-            { selector: '.edge-updated', style: { 'line-color': '#ffab00', 'target-arrow-color': '#ffab00' } }
+            // Base styles
+            { selector: 'node', style: { 'shape': 'ellipse', 'label': 'data(label)', 'text-wrap': 'wrap', 'text-max-width': '110px', 'text-valign': 'center', 'text-halign': 'center', 'color': '#f0e6ff', 'font-size': '12px', 'text-opacity': 'mapData(zoom, 0.85, 1, 0, 1)', 'width': '120px', 'height': '120px', 'background-color': getNodeColor, 'background-image': (node) => createGradientUri(getNodeColor(node)), 'background-fit': 'cover', 'border-width': 3, 'border-color': (node) => adjustColor(getNodeColor(node), 0.5), 'border-opacity': 0.8, 'box-shadow': '0 0 0 rgba(0,0,0,0)', 'transition-property': 'border-width, border-color, border-opacity, box-shadow, opacity', 'transition-duration': '0.3s' } },
+            { selector: 'edge', style: { 'width': 2.5, 'line-color': '#5b3c7a', 'target-arrow-color': '#5b3c7a', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'color': '#e0c8ff', 'font-size': '10px', 'text-rotation': 'autorotate', 'text-margin-y': -10, 'text-opacity': 0, 'transition-property': 'line-color, target-arrow-color, opacity, text-opacity, width', 'transition-duration': '0.3s', 'text-wrap': 'wrap', 'text-max-width': '90px', 'text-outline-color': '#1a001a', 'text-outline-width': 3 } },
+            
+            // Dimmed state - applies to any element that is not part of the selection
+            { selector: '.dimmed', style: { 'opacity': 0.25 } },
+
+            // Diff styles - the "base" state for any changed elements
+            { selector: 'node.node-added, node.node-updated', style: { 'border-color': '#FFD700', 'border-width': '5px', 'border-style': 'solid', 'box-shadow': '0 0 20px #FFD700' } },
+            { selector: 'edge.edge-added, edge.edge-updated', style: { 'line-color': '#FFD700', 'target-arrow-color': '#FFD700', 'width': '5px', 'z-index': 99 } },
+            
+            // Selection styles - MUST be last to override other states
+            { selector: 'edge.highlighted, edge:selected', style: { 'line-color': '#00e5ff', 'target-arrow-color': '#00e5ff', 'width': 4, 'z-index': 100, 'text-opacity': 1 } },
+            { selector: 'node:selected', style: { 'border-color': '#00e5ff', 'border-width': 4, 'border-opacity': 1, 'box-shadow': '0 0 20px #00e5ff' } },
+            { selector: 'node.highlighted', style: { 'border-color': '#00e5ff', 'border-width': 5, 'border-opacity': 1, 'box-shadow': '0 0 20px #00e5ff' } },
         ],
-        layout: { name: 'cose', idealEdgeLength: 200, nodeOverlap: 25, refresh: 20, fit: true, padding: 50, randomize: true, componentSpacing: 150, nodeRepulsion: 600000, edgeElasticity: 100, nestingFactor: 5, gravity: 80, numIter: 1000 }
     });
     infoPanelCloseBtn.addEventListener('click', hideInfoPanel);
     addNodeBtn.addEventListener('click', handleAddNode);
     cancelEdgeBtn.addEventListener('click', cancelEdgeCreation);
+    homeBtn.addEventListener('click', () => cy.animate({ fit: { padding: 50 }, duration: 500 }));
     modalCancelBtn.addEventListener('click', hideModal);
     modalSaveBtn.addEventListener('click', () => onModalSave && onModalSave());
 
@@ -107,18 +124,25 @@ export function initGraphVisualization(containerId) {
         if (edgeSourceNode) {
             completeEdgeCreation(node.id());
         } else {
-            cy.elements().removeClass('selected highlighted');
-            node.addClass('selected').neighborhood().addClass('highlighted');
+            const neighborhood = node.neighborhood();
+            cy.elements().removeClass('selected highlighted dimmed');
+            node.addClass('selected');
+            neighborhood.addClass('highlighted');
+            cy.elements().not(node).not(neighborhood).addClass('dimmed');
             showInfoPanel(node);
         }
         e.stopPropagation();
     });
     cy.on('tap', 'edge', (e) => {
         if (edgeSourceNode) return;
-        cy.elements().removeClass('selected highlighted');
         const edge = e.target;
-        edge.addClass('selected').source().addClass('highlighted'); edge.target().addClass('highlighted');
+        const connectedNodes = edge.source().union(edge.target());
+        cy.elements().removeClass('selected highlighted dimmed');
+        edge.addClass('selected');
+        connectedNodes.addClass('highlighted');
+        cy.elements().not(edge).not(connectedNodes).addClass('dimmed');
         showInfoPanel(edge);
+        e.stopPropagation();
     });
     cy.on('tap', (e) => { if (e.target === cy) { edgeSourceNode ? cancelEdgeCreation() : hideInfoPanel(); } });
 }
@@ -129,24 +153,56 @@ export function renderGraph() {
     try {
         const graphJSON = sessionStorage.getItem('KNOWLEDGE_GRAPH_STATE');
         const tempGraph = new BeliefGraph();
-        if (graphJSON) tempGraph.fromJSON(graphJSON);
-        
+        if (graphJSON) {
+            tempGraph.fromJSON(graphJSON);
+        } else {
+            cy.elements().remove();
+            return;
+        }
+
         cy.elements().remove();
         cy.add(tempGraph.toCytoscapeElements());
-        
-        // FIXED & ENHANCED: Diff visualization logic
+
         const diffJSON = sessionStorage.getItem('GRAPH_DIFF');
         if (diffJSON) {
             const diff = JSON.parse(diffJSON);
-            diff.nodes.added.forEach(n => cy.$id(n.id).addClass('node-added'));
-            diff.nodes.updated.forEach(n => cy.$id(n.id).addClass('node-updated'));
-            diff.edges.added.forEach(e => cy.$id(`${e.source}_${e.label}_${e.target}`).addClass('edge-added'));
-            diff.edges.updated.forEach(e => cy.$id(`${e.source}_${e.label}_${e.target}`).addClass('edge-updated'));
-            sessionStorage.removeItem('GRAPH_DIFF');
-        }
+            (diff.nodes?.added || []).forEach(n => cy.$id(n.id).addClass('node-added'));
+            (diff.nodes?.updated || []).forEach(n => cy.$id(n.id).addClass('node-updated'));
 
-        cy.layout({ name: 'cose', padding: 50, fit: true }).run();
-    } catch (error) { console.error("Failed to render graph:", error); }
+            const addedEdges = diff.edges?.added || [];
+            const updatedEdges = diff.edges?.updated || [];
+            cy.edges().forEach(edge => {
+                const edgeData = edge.data();
+                if (addedEdges.some(e => e.source === edgeData.source && e.target === edgeData.target && e.label === edgeData.label)) {
+                    edge.addClass('edge-added');
+                }
+                if (updatedEdges.some(e => e.source === edgeData.source && e.target === edgeData.target && e.label === edgeData.label)) {
+                    edge.addClass('edge-updated');
+                }
+            });
+        }
+        
+        cy.layout({
+            name: 'cose',
+            idealEdgeLength: 200,
+            nodeOverlap: 25,
+            refresh: 20,
+            fit: true,
+            padding: 50,
+            randomize: true, // Randomize positions for a fresh layout
+            componentSpacing: 150,
+            nodeRepulsion: 600000,
+            edgeElasticity: 100,
+            nestingFactor: 5,
+            gravity: 80,
+            numIter: 1000,
+        }).run();
+
+    } catch (error) {
+        console.error("Failed to render graph:", error);
+        cy.elements().remove();
+    }
 }
+
 
 window.addEventListener('storage', (e) => { if (e.key === 'KNOWLEDGE_GRAPH_STATE' && document.getElementById('graphView').style.display !== 'none') { renderGraph(); } });
