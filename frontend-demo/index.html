@@ -73,6 +73,7 @@
     <div id="graphView">
       <div id="cy"></div>
       <div id="graph-controls">
+        <button id="home-btn" title="Center Graph">⌂</button>
         <button id="add-node-btn">+ Add Node</button>
         <button id="cancel-edge-btn" style="display: none">Cancel Edge</button>
       </div>
@@ -97,9 +98,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
     <script type="module">
-      import { runStreamingFlow, formatToolCallsMarkdown } from "./script.js?cachebust=16";
-      import { exportGraphJson, clearGraph } from "./user_tools.js?cachebust=16";
-      import { initGraphVisualization, renderGraph } from "./graph-view.js?cachebust=16";
+      import { runStreamingFlow, formatToolCallsMarkdown } from "./script.js?cachebust=17";
+      import { exportGraphJson, clearGraph } from "./user_tools.js?cachebust=17";
+      import { initGraphVisualization, renderGraph } from "./graph-view.js?cachebust=17";
       import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 
       const chatView = document.getElementById("chatView");
