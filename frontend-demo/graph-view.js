@@ -8,14 +8,48 @@ const addNodeBtn = document.getElementById('add-node-btn'); const cancelEdgeBtn 
 const modalOverlay = document.getElementById('input-modal-overlay'); const modalTitle = document.getElementById('modal-title');
 const modalBody = document.getElementById('modal-body'); const modalSaveBtn = document.getElementById('modal-save-btn');
 const modalCancelBtn = document.getElementById('modal-cancel-btn');
+const filterBtn = document.getElementById('filter-btn');
+const filterPanel = document.getElementById('filter-panel');
+const filterLabelInput = document.getElementById('filter-label-input');
+const filterTypeSelect = document.getElementById('filter-type-select');
+const filterConnectionsInput = document.getElementById('filter-connections-input');
+const applyFilterBtn = document.getElementById('apply-filter-btn');
+const clearFilterBtn = document.getElementById('clear-filter-btn');
 let onModalSave = null;
 
-const typeColorMap = [ '#311b92', '#4a148c', '#004d40', '#b71c1c', '#bf360c', '#3e2723', '#1b5e20', '#880e4f', '#263238', '#0d47a1' ];
+const ZOOM_LABEL_THRESHOLD = 0.45; // The zoom level at which labels will disappear.
+const baseColorPool = [ '#311b92', '#4a148c', '#004d40', '#b71c1c', '#bf360c', '#3e2723', '#1b5e20', '#880e4f', '#263238', '#0d47a1' ];
+let typeToColorMap = new Map();
+let availableColors = [];
+
+function resetColorAssigner() {
+    typeToColorMap.clear();
+    availableColors = [...baseColorPool];
+}
 function djb2Hash(str) { let hash = 5381; for (let i = 0; i < str.length; i++) { hash = (hash * 33) ^ str.charCodeAt(i); } return hash; }
-function stringToColor(str) { if (!str) return typeColorMap[8]; const hash = djb2Hash(str.toLowerCase()); return typeColorMap[Math.abs(hash) % typeColorMap.length]; }
+function getColorForType(type) {
+    if (!type) return baseColorPool[8];
+    const lcaseType = type.toLowerCase();
+    
+    if (typeToColorMap.has(lcaseType)) {
+        return typeToColorMap.get(lcaseType);
+    }
+    
+    let color;
+    if (availableColors.length > 0) {
+        color = availableColors.shift();
+    } else {
+        const hash = djb2Hash(lcaseType);
+        color = baseColorPool[Math.abs(hash) % baseColorPool.length];
+    }
+    
+    typeToColorMap.set(lcaseType, color);
+    return color;
+}
+
 function adjustColor(color, percent) { let f = parseInt(color.slice(1), 16), t = percent < 0 ? 0 : 255, p = Math.abs(percent), R = f >> 16, G = f >> 8 & 0x00FF, B = f & 0x0000FF; return "#" + (0x1000000 + (Math.round((t - R) * p) + R) * 0x10000 + (Math.round((t - G) * p) + G) * 0x100 + (Math.round((t - B) * p) + B)).toString(16).slice(1); }
 function createGradientUri(color) { const centerColor = adjustColor(color, 0.25); const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><radialGradient id="grad" cx="50%" cy="50%" r="50%"><stop offset="0%" style="stop-color:${centerColor};stop-opacity:1" /><stop offset="100%" style="stop-color:${color};stop-opacity:1" /></radialGradient></defs><rect x="0" y="0" width="100" height="100" fill="url(#grad)" /></svg>`; return `data:image/svg+xml;base64,${btoa(svg)}`; }
-function getNodeColor(node) { return stringToColor(node.data('type')); }
+function getNodeColor(node) { return getColorForType(node.data('type')); }
 
 function saveGraphState() { sessionStorage.setItem('KNOWLEDGE_GRAPH_STATE', graph.toJSON()); renderGraph(); }
 
@@ -89,24 +123,85 @@ function completeEdgeCreation(targetId) {
     });
 }
 
+function populateTypeFilter() {
+    if (!cy) return;
+    const types = new Set(cy.nodes().map(node => node.data('type')).filter(Boolean));
+    const currentVal = filterTypeSelect.value;
+    filterTypeSelect.innerHTML = '<option value="">All Types</option>';
+    types.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type;
+        option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+        filterTypeSelect.appendChild(option);
+    });
+    filterTypeSelect.value = currentVal;
+}
+
+const defaultLayout = {
+    name: 'cose', idealEdgeLength: 200, nodeOverlap: 25, refresh: 20, fit: false, padding: 50,
+    randomize: true, componentSpacing: 150, nodeRepulsion: 600000, edgeElasticity: 100,
+    nestingFactor: 5, gravity: 80, numIter: 1000,
+};
+
+function applyGraphFilter() {
+    if (!cy) return;
+    const labelFilter = filterLabelInput.value.toLowerCase().trim();
+    const typeFilter = filterTypeSelect.value;
+    const connectionsFilter = parseInt(filterConnectionsInput.value, 10);
+    cy.batch(() => {
+        const filteredNodes = cy.nodes().filter(node => {
+            let pass = true;
+            if (labelFilter && !node.data('label').toLowerCase().includes(labelFilter)) pass = false;
+            if (typeFilter && node.data('type') !== typeFilter) pass = false;
+            if (!isNaN(connectionsFilter) && node.degree() < connectionsFilter) pass = false;
+            return pass;
+        });
+        const elementsToShow = filteredNodes.union(filteredNodes.edgesWith(filteredNodes));
+        cy.elements().style('display', 'none');
+        elementsToShow.style('display', 'element');
+    });
+    cy.layout(defaultLayout).run();
+    cy.animate({ fit: { eles: cy.elements(':visible'), padding: 50 }, duration: 500 });
+}
+
+function clearGraphFilter() {
+    if (!cy) return;
+    filterLabelInput.value = '';
+    filterTypeSelect.value = '';
+    filterConnectionsInput.value = '';
+    cy.elements().style('display', 'element');
+    cy.layout(defaultLayout).run();
+    cy.animate({ fit: { padding: 50 }, duration: 500 });
+}
+
+// --- Dynamic Label Logic ---
+// This function now makes node labels disappear when zoomed out.
+function updateNodeLabelsOnZoom() {
+    if (!cy) return;
+    const zoomLevel = cy.zoom();
+    cy.batch(() => {
+        cy.nodes().forEach(node => {
+            // If zoomed out past the threshold, hide the label's text. Otherwise, show it.
+            if (zoomLevel < ZOOM_LABEL_THRESHOLD) {
+                node.style('text-opacity', 0);
+            } else {
+                node.style('text-opacity', 1);
+            }
+        });
+    });
+}
+
 export function initGraphVisualization(containerId) {
     if (cy) return;
     const homeBtn = document.getElementById('home-btn');
     cy = cytoscape({
         container: document.getElementById(containerId), autoungrabify: true,
         style: [
-            // Base styles
-            { selector: 'node', style: { 'shape': 'ellipse', 'label': 'data(label)', 'text-wrap': 'wrap', 'text-max-width': '110px', 'text-valign': 'center', 'text-halign': 'center', 'color': '#f0e6ff', 'font-size': '12px', 'text-opacity': 'mapData(zoom, 0.85, 1, 0, 1)', 'width': '120px', 'height': '120px', 'background-color': getNodeColor, 'background-image': (node) => createGradientUri(getNodeColor(node)), 'background-fit': 'cover', 'border-width': 3, 'border-color': (node) => adjustColor(getNodeColor(node), 0.5), 'border-opacity': 0.8, 'box-shadow': '0 0 0 rgba(0,0,0,0)', 'transition-property': 'border-width, border-color, border-opacity, box-shadow, opacity', 'transition-duration': '0.3s' } },
-            { selector: 'edge', style: { 'width': 2.5, 'line-color': '#5b3c7a', 'target-arrow-color': '#5b3c7a', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'color': '#e0c8ff', 'font-size': '10px', 'text-rotation': 'autorotate', 'text-margin-y': -10, 'text-opacity': 0, 'transition-property': 'line-color, target-arrow-color, opacity, text-opacity, width', 'transition-duration': '0.3s', 'text-wrap': 'wrap', 'text-max-width': '90px', 'text-outline-color': '#1a001a', 'text-outline-width': 3 } },
-            
-            // Dimmed state - applies to any element that is not part of the selection
+            { selector: 'node', style: { 'shape': 'ellipse', 'label': 'data(label)', 'text-wrap': 'wrap', 'text-max-width': '110px', 'text-valign': 'center', 'text-halign': 'center', 'color': '#f0e6ff', 'font-size': '12px', 'text-opacity': 1, 'width': '120px', 'height': '120px', 'background-color': getNodeColor, 'background-image': (node) => createGradientUri(getNodeColor(node)), 'background-fit': 'cover', 'border-width': 3, 'border-color': (node) => adjustColor(getNodeColor(node), 0.5), 'border-opacity': 0.8, 'box-shadow': '0 0 0 rgba(0,0,0,0)', 'transition-property': 'border-width, border-color, border-opacity, box-shadow, opacity, display, text-opacity', 'transition-duration': '0.3s' } },
+            { selector: 'edge', style: { 'width': 2.5, 'line-color': '#5b3c7a', 'target-arrow-color': '#5b3c7a', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', 'label': 'data(label)', 'color': '#e0c8ff', 'font-size': '10px', 'text-rotation': 'autorotate', 'text-margin-y': -10, 'text-opacity': 'mapData(zoom, 0.7, 1, 0, 1)', 'transition-property': 'line-color, target-arrow-color, opacity, text-opacity, width, display', 'transition-duration': '0.3s', 'text-wrap': 'wrap', 'text-max-width': '90px', 'text-outline-color': '#1a001a', 'text-outline-width': 3 } },
             { selector: '.dimmed', style: { 'opacity': 0.25 } },
-
-            // Diff styles - the "base" state for any changed elements
             { selector: 'node.node-added, node.node-updated', style: { 'border-color': '#FFD700', 'border-width': '5px', 'border-style': 'solid', 'box-shadow': '0 0 20px #FFD700' } },
             { selector: 'edge.edge-added, edge.edge-updated', style: { 'line-color': '#FFD700', 'target-arrow-color': '#FFD700', 'width': '5px', 'z-index': 99 } },
-            
-            // Selection styles
             { selector: 'edge.highlighted, edge:selected', style: { 'line-color': '#00e5ff', 'target-arrow-color': '#00e5ff', 'width': 4, 'z-index': 100, 'text-opacity': 1 } },
             { selector: 'node:selected', style: { 'border-color': '#00e5ff', 'border-width': 4, 'border-opacity': 1, 'box-shadow': '0 0 20px #00e5ff' } },
             { selector: 'node.highlighted', style: { 'border-color': '#00e5ff', 'border-width': 5, 'border-opacity': 1, 'box-shadow': '0 0 20px #00e5ff' } },
@@ -119,11 +214,17 @@ export function initGraphVisualization(containerId) {
     modalCancelBtn.addEventListener('click', hideModal);
     modalSaveBtn.addEventListener('click', () => onModalSave && onModalSave());
 
+    filterBtn.addEventListener('click', () => {
+        filterPanel.style.display = filterPanel.style.display === 'flex' ? 'none' : 'flex';
+        if (filterPanel.style.display === 'flex') populateTypeFilter();
+    });
+    applyFilterBtn.addEventListener('click', applyGraphFilter);
+    clearFilterBtn.addEventListener('click', clearGraphFilter);
+
     cy.on('tap', 'node', (e) => {
         const node = e.target;
-        if (edgeSourceNode) {
-            completeEdgeCreation(node.id());
-        } else {
+        if (edgeSourceNode) { completeEdgeCreation(node.id()); } 
+        else {
             const neighborhood = node.neighborhood();
             cy.elements().removeClass('selected highlighted dimmed');
             node.addClass('selected');
@@ -145,20 +246,20 @@ export function initGraphVisualization(containerId) {
         e.stopPropagation();
     });
     cy.on('tap', (e) => { if (e.target === cy) { edgeSourceNode ? cancelEdgeCreation() : hideInfoPanel(); } });
+
+    // Add zoom event listener for dynamic labels
+    cy.on('zoom', updateNodeLabelsOnZoom);
 }
 
 export function renderGraph() {
     if (!cy) return;
     hideInfoPanel();
+    resetColorAssigner();
     try {
         const graphJSON = sessionStorage.getItem('KNOWLEDGE_GRAPH_STATE');
         const tempGraph = new BeliefGraph();
-        if (graphJSON) {
-            tempGraph.fromJSON(graphJSON);
-        } else {
-            cy.elements().remove();
-            return;
-        }
+        if (graphJSON) { tempGraph.fromJSON(graphJSON); } 
+        else { cy.elements().remove(); return; }
 
         cy.elements().remove();
         cy.add(tempGraph.toCytoscapeElements());
@@ -168,7 +269,6 @@ export function renderGraph() {
             const diff = JSON.parse(diffJSON);
             (diff.nodes?.added || []).forEach(n => cy.$id(n.id).addClass('node-added'));
             (diff.nodes?.updated || []).forEach(n => cy.$id(n.id).addClass('node-updated'));
-
             const addedEdges = diff.edges?.added || [];
             const updatedEdges = diff.edges?.updated || [];
             cy.edges().forEach(edge => {
@@ -182,21 +282,17 @@ export function renderGraph() {
             });
         }
         
-        cy.layout({
-            name: 'cose',
-            idealEdgeLength: 200,
-            nodeOverlap: 25,
-            refresh: 20,
-            fit: true,
-            padding: 50,
-            randomize: true,
-            componentSpacing: 150,
-            nodeRepulsion: 600000,
-            edgeElasticity: 100,
-            nestingFactor: 5,
-            gravity: 80,
-            numIter: 1000,
-        }).run();
+        document.getElementById('personality-archetype').textContent = sessionStorage.getItem('PERSONALITY_ARCHETYPE') || '';
+        document.getElementById('turn-summary').textContent = sessionStorage.getItem('TURN_SUMMARY') || '';
+
+        const layout = cy.layout(defaultLayout);
+        layout.on('layoutstop', () => {
+            cy.animate({ fit: { padding: 50 }, duration: 500 });
+            updateNodeLabelsOnZoom();
+        });
+        layout.run();
+        
+        populateTypeFilter();
 
     } catch (error) {
         console.error("Failed to render graph:", error);
