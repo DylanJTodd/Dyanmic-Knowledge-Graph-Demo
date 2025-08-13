@@ -339,6 +339,7 @@ async function runFinalPrompt(reasoningResult, lastUserMsg, handlers) {
 }
 
 export async function runStreamingFlow(userInput, handlers) {
+  sessionStorage.removeItem('GRAPH_DIFF');
   toolCallLog = [];
   const graphBeforeTurn = getGraphDict();
   const p1Messages = [{
