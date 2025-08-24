@@ -15,6 +15,9 @@ const filterTypeSelect = document.getElementById('filter-type-select');
 const filterConnectionsInput = document.getElementById('filter-connections-input');
 const applyFilterBtn = document.getElementById('apply-filter-btn');
 const clearFilterBtn = document.getElementById('clear-filter-btn');
+const saveGraphBtn = document.getElementById('save-graph-btn');
+const loadGraphBtn = document.getElementById('load-graph-btn');
+const loadGraphInput = document.getElementById('load-graph-input');
 let onModalSave = null;
 
 const ZOOM_LABEL_THRESHOLD = 0.95;
@@ -40,6 +43,53 @@ function getColorForType(type) {
 function adjustColor(color, percent) { let f = parseInt(color.slice(1), 16), t = percent < 0 ? 0 : 255, p = Math.abs(percent), R = f >> 16, G = f >> 8 & 0x00FF, B = f & 0x0000FF; return "#" + (0x1000000 + (Math.round((t - R) * p) + R) * 0x10000 + (Math.round((t - G) * p) + G) * 0x100 + (Math.round((t - B) * p) + B)).toString(16).slice(1); }
 function createGradientUri(color) { const centerColor = adjustColor(color, 0.25); const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><radialGradient id="grad" cx="50%" cy="50%" r="50%"><stop offset="0%" style="stop-color:${centerColor};stop-opacity:1" /><stop offset="100%" style="stop-color:${color};stop-opacity:1" /></radialGradient></defs><rect x="0" y="0" width="100" height="100" fill="url(#grad)" /></svg>`; return `data:image/svg+xml;base64,${btoa(svg)}`; }
 function getNodeColor(node) { return getColorForType(node.data('type')); }
+
+function saveGraphToFile() {
+    const graphJSON = sessionStorage.getItem('KNOWLEDGE_GRAPH_STATE');
+    if (!graphJSON || graphJSON === '{"nodes":[],"edges":[]}') {
+        alert("Graph is empty. Nothing to save.");
+        return;
+    }
+    const blob = new Blob([graphJSON], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date();
+    const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    a.href = url;
+    a.download = `knowledge-graph-${dateString}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function handleFileLoad(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const fileContent = e.target.result;
+            const graphData = JSON.parse(fileContent);
+            if (!graphData || !Array.isArray(graphData.nodes) || !Array.isArray(graphData.edges)) {
+                throw new Error("Invalid graph file format. Expected an object with 'nodes' and 'edges' arrays.");
+            }
+            // Dispatch event for main script to handle state reset and loading
+            window.dispatchEvent(new CustomEvent('graph-loaded', { detail: fileContent }));
+        } catch (error) {
+            alert(`Error loading graph file: ${error.message}`);
+        } finally {
+            event.target.value = null; // Reset input for re-loading the same file
+        }
+    };
+    reader.onerror = () => {
+        alert("Error reading file.");
+        event.target.value = null;
+    };
+    reader.readAsText(file);
+}
+
 
 function saveGraphState() { sessionStorage.setItem('KNOWLEDGE_GRAPH_STATE', graph.toJSON()); renderGraph(); }
 
@@ -208,6 +258,10 @@ export function initGraphVisualization(containerId) {
     homeBtn.addEventListener('click', () => cy.animate({ fit: { padding: 50 }, duration: 500 }));
     modalCancelBtn.addEventListener('click', hideModal);
     modalSaveBtn.addEventListener('click', () => onModalSave && onModalSave());
+
+    saveGraphBtn.addEventListener('click', saveGraphToFile);
+    loadGraphBtn.addEventListener('click', () => loadGraphInput.click());
+    loadGraphInput.addEventListener('change', handleFileLoad);
 
     filterBtn.addEventListener('click', () => {
         filterPanel.style.display = filterPanel.style.display === 'flex' ? 'none' : 'flex';

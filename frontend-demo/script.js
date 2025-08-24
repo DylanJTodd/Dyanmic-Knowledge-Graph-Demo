@@ -79,6 +79,14 @@ let prompt15History = [];
 let lastGraphDiff = null;
 let toolCallLog = [];
 
+export function resetChatHistory() {
+  prompt1History = [];
+  prompt2History = [];
+  prompt15History = [];
+  lastGraphDiff = null;
+  toolCallLog = [];
+}
+
 function getApiKey() {
   const key = localStorage.getItem("OPENAI_API_KEY");
   if (!key || !key.startsWith("sk-")) {

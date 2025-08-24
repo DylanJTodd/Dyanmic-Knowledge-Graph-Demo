@@ -44,6 +44,10 @@ export function loadGraphFromFile(file, callback) {
   reader.readAsText(file);
 }
 
+export function loadGraphFromJSON(jsonString) {
+    graph.fromJSON(jsonString);
+}
+
 export function exportGraphJson() {
   return graph.toJSON();
 }

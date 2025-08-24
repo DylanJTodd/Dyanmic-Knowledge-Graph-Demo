@@ -77,10 +77,14 @@
       <div id="cy"></div>
       <div id="graph-controls">
         <button id="home-btn" title="Center Graph">⌂</button>
+        <button id="save-graph-btn" title="Save Graph">💾</button>
+        <button id="load-graph-btn" title="Load Graph">📂</button>
         <button id="filter-btn" title="Filter Nodes">🔍</button>
         <button id="add-node-btn">+ Add Node</button>
         <button id="cancel-edge-btn" style="display: none">Cancel Edge</button>
       </div>
+      <input type="file" id="load-graph-input" accept=".json,application/json" style="display: none;">
+      
       <div id="filter-panel" style="display: none;">
         <input type="text" id="filter-label-input" placeholder="Search label...">
         <select id="filter-type-select">
@@ -115,8 +119,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
     <script type="module">
-      import { runStreamingFlow, generateSummaries, formatToolCallsMarkdown } from "./script.js?cachebust=18";
-      import { exportGraphJson, clearGraph } from "./user_tools.js?cachebust=18";
+      // --- MODIFIED IMPORTS ---
+      import { runStreamingFlow, generateSummaries, formatToolCallsMarkdown, resetChatHistory } from "./script.js?cachebust=18";
+      import { exportGraphJson, clearGraph, loadGraphFromJSON } from "./user_tools.js?cachebust=18";
       import { initGraphVisualization, renderGraph } from "./graph-view.js?cachebust=18";
       import { marked } from "https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js";
 
@@ -254,6 +259,40 @@
         
         const settingsAreOpen = settingsPanel.style.display === 'block';
         setGraphControlsEnabled(!settingsAreOpen);
+      });
+
+      // --- ADDED: Event listener for loading a graph file ---
+      window.addEventListener('graph-loaded', (e) => {
+          const newGraphJSON = e.detail; // This is now the JSON string from the file
+          if (!newGraphJSON) return;
+
+          if (!confirm("Loading a new graph will clear the current session, including chat history and the current graph. Are you sure?")) {
+              return;
+          }
+
+          // 1. Reset application state
+          isBotResponding = false;
+          runButton.disabled = false;
+          chatContainer.innerHTML = '';
+          resetChatHistory();
+          clearGraph();
+          sessionStorage.removeItem("KNOWLEDGE_GRAPH_STATE");
+          sessionStorage.removeItem("GRAPH_DIFF");
+          sessionStorage.removeItem("PERSONALITY_ARCHETYPE");
+          sessionStorage.removeItem("TURN_SUMMARY");
+
+          // 2. Load new graph state
+          sessionStorage.setItem('KNOWLEDGE_GRAPH_STATE', newGraphJSON);
+          loadGraphFromJSON(newGraphJSON); 
+
+          // 3. Update UI
+          if (graphView.style.display !== "flex") {
+              graphViewBtn.click();
+          } else {
+              renderGraph();
+          }
+          updateGraphViewButtonState();
+          alert("Graph loaded successfully.");
       });
 
       function createExpandableThoughtsBubble() {

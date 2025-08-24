@@ -179,3 +179,7 @@ registerTool({
     required: []
   }
 }, () => graph.getEdgeHistory());
+
+export function loadGraphFromJSON(jsonString) {
+    graph.fromJSON(jsonString);
+}
