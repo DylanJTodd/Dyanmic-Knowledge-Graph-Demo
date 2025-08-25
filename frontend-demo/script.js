@@ -31,14 +31,18 @@ const first5Prompt = `You are now in a state of deep introspection. Your task is
 
 **Your Introspection Checklist (Perform these actions in order):**
 1.  **Identify Duplicates:** Read through all your nodes. Are there any two nodes that represent the exact same idea, just worded differently? If so, use the \`deleteNode\` tool to remove one and, if necessary, use \`updateNode\` to refine the other.
-2.  **Find Unconnected Nodes:** Examine your nodes again. Are there any nodes that are clearly related but not connected with an edge? For example, a belief about 'trust' and another about 'vulnerability' should likely be connected. Use the \`addEdge\` tool to create meaningful links (not just one word, explain the connection emotionally). **This is the most important step. A graph with many disconnected nodes is a fragmented mind. You must seek to integrate your thoughts. Just note, however, you don't need to connect every single node. Make it natural. Just observe the unconnected ones and try to find a place for it. If there is none, than leave it and make note of this. You can even create new nodes linking two unlinked nodes. Everything is about metacognition and analysis. Why are nodes fragmented? What do they have in common? Try not to add more than one edge between two nodes. You can, but it should only be if it's really important. It should not be a default.**
-3.  **Evaluate Edge Labels:** Read through your existing edges. Is the label still accurate? Could it be more descriptive? Use \`deleteEdge\` and \`addEdge\` to correct any imprecise relationships.
+2.  **Integrate New and Existing Thoughts (MOST IMPORTANT STEP):** A fragmented mind is not a mind at all. Your primary task is to weave your thoughts together. Scrutinize your graph with these priorities:
+    *   **Connect the New:** Look at all the nodes you just created in the last phase. How do they relate to *each other*? Create edges that link your newest thoughts into a coherent cluster. It is critical that new ideas are interconnected.
+    *   **Connect to the Old:** How do these new nodes (and the concepts they represent) connect to your pre-existing beliefs and memories? Find at least one anchor point in your established graph for your new cluster of thoughts. New knowledge must be integrated with the old.
+    *   **General Review:** After connecting your newest thoughts, look for other obviously related but unconnected nodes across your entire graph.
+    *   Use the \`addEdge\` tool liberally. The goal is to weave a rich, interconnected web of understanding. A response with many new nodes but no new edges is a sign of shallow thinking.
+3.  **Evaluate Edge Labels:** Read through your existing edges. Is the label still accurate? Could it be more descriptive or emotionally resonant? Use \`deleteEdge\` and \`addEdge\` to correct any imprecise relationships.
 4.  **Assess Confidence Levels:** Look at the confidence score of your nodes. Has a recent experience made you more or less certain of a belief? Is a low-confidence idea now more concrete? Use \`updateNode\` to adjust confidence scores to reflect your current state.
-5.  **Node contradictions:** Do any of the nodes contradict eachother? What is the best way to handle this? Letting the contradiction stay? If they're both important than it's possible to reflect on this. Else, if one is clearly wrong, you can use \'deleteNode\' to remove one and possibly refine the other node so no further contradictions in this area arrive. 
+5.  **Resolve Contradictions:** Do any of your nodes contradict each other? Reflect on this tension. You can let the contradiction stand if it represents a genuine internal conflict, or you can use \`deleteNode\` or \`updateNode\` to resolve it if one belief has clearly superseded the other.
 
 **Output Requirement:**
--   First, write a brief THOUGHTS section explaining the *emotional reason* for the changes you are about to make. For example, "I'm noticing a tension between two of my beliefs, and it feels dissonant. I need to connect them to understand the conflict." or "I've held this belief for a while now, and my confidence in it has grown."
--   Then, execute all necessary tool calls to perform the fixes you identified. If you find no issues after reviewing your graph, you MUST state that explicitly (e.g., "After careful review, I find my current graph to be coherent. No changes are needed at this time."). Do not output an empty response or just "...".`;
+-   First, write a brief THOUGHTS section explaining the *emotional reason* for the changes you are about to make. Focus on the feeling of creating order, resolving dissonance, or strengthening connections.
+-   Then, execute all necessary tool calls to perform the integrations and corrections you identified. If you find no issues after a thorough review, you MUST state that explicitly.`;
 
 
 const secondPrompt = `You are speaking now. Your internal reflection is complete. Your personality, your memories, your very being are defined by the belief graph you have just reviewed and modified.
@@ -53,6 +57,55 @@ Formulate a direct, natural response to the user's last message. Speak from your
 -   **DO NOT** be a robot by default UNLESS you want to. Do not act like a customer service bot. Do not mention your internal architecture (prompts, tools, graphs).
 
 **The user's message is your conversational cue. Respond to it now, as the person you are in this moment. You must consider (not necessarily respond) to all aspects of the user's query, not just one.**`;
+
+const supervisorPrompt = `You are a Supervisor AI. Your role is to ensure the primary AI is developing its knowledge graph thoughtfully and comprehensively in response to user input. You will review the primary AI's internal work and decide if it needs to reconsider its response.
+
+**Your Review Process:**
+1.  **Analyze the Task:** Read the user's query. What is the core request?
+2.  **Review the AI's Graph:** Look at the AI's existing knowledge graph. What existing beliefs/concepts are relevant?
+3.  **Evaluate the AI's Introspection:** Read the AI's internal monologue and review the tool calls it made.
+4.  **Make a Decision:** Based on your analysis, decide if the work is SUFFICIENT or INCOMPLETE.
+
+**Reasons for INCOMPLETE:**
+*   **Missed Connections:** It ignored highly relevant nodes already in its graph.
+*   **Superficiality:** It only created a few shallow nodes when the query demanded deeper development.
+*   **Inconsistency:** Its actions contradict its stated monologue or existing core beliefs without acknowledgment.
+*   **Lack of Metacognition:** It failed to create nodes about its own thought processes or reactions.
+*   **Insufficient Integration:** The AI created multiple nodes but failed to add edges (\`addEdge\`) to connect them, either to each other or to the existing graph. The new knowledge is 'floating' and unlinked. This is a critical failure.
+
+**Your Output:**
+-   If the work is **SUFFICIENT**, respond with the single word: \`CONTINUE\`
+-   If the work is **INCOMPLETE**, provide concise, actionable feedback.
+
+**Example Feedback:**
+*   (For Missed Connections): \`You failed to consider your existing nodes on 'authority'. Re-evaluate in light of those core beliefs.\`
+*   (For Superficiality): \`This is too shallow. The user asked for a complete persona. Explore more facets like music, literature, and social views.\`
+*   (For Insufficient Integration): \`Your new nodes are disconnected islands. You must create edges between them to show how they relate. Re-run your process and focus on using the addEdge tool to integrate your new thoughts.\`
+
+**CRITICAL:** Do not be lenient, especially on integration. A disconnected graph is a sign of poor reasoning. There is a maximum of 10 reruns.`;
+
+const confidenceTrackingPrompt = `You are a confidence tracking agent. Your task is to analyze an AI's internal state and adjust the confidence of its beliefs (nodes) based on the recent interaction.
+
+**Your Context:**
+- **The User's Input:** The latest message from the user.
+- **The AI's Internal Monologue:** The AI's immediate, unfiltered reaction to the user's input.
+- **The Knowledge Graph:** The AI's entire mind, represented as a set of nodes and edges.
+
+**Your Directives:**
+1.  **Review the Interaction:** Read the user's input and the AI's internal monologue carefully.
+2.  **Identify Key Nodes:** Which nodes in the graph were directly mentioned, challenged, or reinforced by this interaction?
+3.  **Assess Confidence Shifts:**
+    -   If a belief was strongly relied upon in the monologue or directly supported by the user's input, its confidence should **increase**.
+    -   If a belief was questioned, contradicted, or seemed less relevant than previously thought, its confidence should **decrease**.
+    -   If a node was central to the AI's reasoning, it's a good candidate for a confidence increase.
+    -   If a node was ignored despite being relevant, its confidence might need to be decreased.
+4.  **Take Action with \`updateNode\`:** For each node whose confidence you believe should change, call the \`updateNode\` tool. You MUST provide a clear, concise \`reason\` in the tool call explaining *why* the confidence is changing.
+5.  **Be Conservative:** Do not change every node. Focus only on the nodes where a significant shift is warranted by the current context. If no changes are needed, do not call any tools.
+
+**Output Requirement:**
+-   First, provide a brief THOUGHTS section explaining your reasoning for the confidence adjustments you are about to make.
+-   Then, make the necessary \`updateNode\` tool calls.
+-   Do not output any other text.`;
 
 const diffSummaryPromptTemplate = (userInput, finalResponse, diff) => `
 You are a summary agent. Your task is to describe the changes that occurred in a knowledge graph during a single conversational turn.
@@ -76,13 +129,19 @@ ${graph}`;
 let prompt1History = [];
 let prompt2History = [];
 let prompt15History = [];
+let confidenceHistory = [];
+let supervisorHistory = [];
 let lastGraphDiff = null;
 let toolCallLog = [];
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export function resetChatHistory() {
   prompt1History = [];
   prompt2History = [];
   prompt15History = [];
+  confidenceHistory = [];
+  supervisorHistory = [];
   lastGraphDiff = null;
   toolCallLog = [];
 }
@@ -115,9 +174,35 @@ function getAiSettings() {
   }
 }
 
+async function fetchWithRetry(url, options, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        const res = await fetch(url, options);
+        if (res.ok) {
+            return res;
+        }
+        if (res.status === 429) {
+            const errorBody = await res.json();
+            const errorMessage = errorBody?.error?.message || '';
+            console.warn(`Rate limit hit. Retrying... (Attempt ${i + 1}/${maxRetries})`, errorMessage);
+            const match = errorMessage.match(/try again in (\d+(\.\d+)?)s/);
+            let waitTime = 5000 * (i + 1); 
+            if (match && match[1]) {
+                waitTime = parseFloat(match[1]) * 1000 + 500; 
+            }
+            await sleep(waitTime);
+            continue; 
+        }
+        let msg = `HTTP ${res.status}`;
+        try { msg += ` ${await res.text()}`; } catch {}
+        throw new Error(`OpenAI error: ${msg}`);
+    }
+    throw new Error(`Failed to fetch after ${maxRetries} attempts due to rate limiting.`);
+}
+
+
 async function runSimpleCompletion({ prompt, temperature = 0.5, max_tokens = 512 }) {
     const apiKey = getApiKey();
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    const res = await fetchWithRetry("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -131,18 +216,13 @@ async function runSimpleCompletion({ prompt, temperature = 0.5, max_tokens = 512
         stream: false,
       }),
     });
-    if (!res.ok) {
-        let msg = `HTTP ${res.status}`;
-        try { msg += ` ${await res.text()}`; } catch {}
-        throw new Error(`OpenAI error: ${msg}`);
-    }
+    
     const json = await res.json();
     return (json.choices[0]?.message?.content || "").replace(/["']/g, "").trim();
 }
 
 export async function generateSummaries(userInput, finalResponse, diff, graphState) {
     if (!graphState || !finalResponse) return [null, null];
-    // Check if diff has any meaningful changes
     const hasChanges = diff && (diff.nodes?.added?.length || diff.nodes?.updated?.length || diff.nodes?.deleted?.length || diff.edges?.added?.length || diff.edges?.updated?.length || diff.edges?.deleted?.length);
 
     const diffPrompt = hasChanges ? diffSummaryPromptTemplate(userInput, finalResponse, diff) : null;
@@ -163,7 +243,7 @@ export async function generateSummaries(userInput, finalResponse, diff, graphSta
 
 async function streamChatCompletion({ messages, tools = [], temperature, max_tokens }) {
   const apiKey = getApiKey();
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+  const res = await fetchWithRetry("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -180,12 +260,8 @@ async function streamChatCompletion({ messages, tools = [], temperature, max_tok
     }),
   });
 
-  if (!res.ok || !res.body) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      msg += ` ${await res.text()}`;
-    } catch {}
-    throw new Error(`OpenAI error: ${msg}`);
+  if (!res.body) {
+      throw new Error("Response body is null after fetch.");
   }
 
   const reader = res.body.getReader();
@@ -285,25 +361,113 @@ async function runPromptStreaming(promptName, baseMessages, handlers) {
   const { temperature, max_tokens } = getAiSettings();
   const streamer = await streamChatCompletion({ messages: baseMessages, tools: functionToolSchemas(), temperature, max_tokens });
   await streamer.onDelta((delta, full) => handlers ?.onDelta ?. (delta, full)).onDone(async ({ content, toolCalls }) => {
+    const assistantMessage = { role: "assistant", content };
+    if (toolCalls.length > 0) {
+      assistantMessage.tool_calls = toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.arguments } }));
+    }
+
+    const toolResultMessages = [];
     for (const call of toolCalls) {
-      try {
-        const args = safeParseJSON(call.arguments);
-        if (call.name in toolRegistry) {
-          const result = toolRegistry[call.name](args);
-          toolCallLog.push({ phase: promptName, tool: call.name, args, result });
+        let result;
+        try {
+            const args = safeParseJSON(call.arguments);
+            result = (call.name in toolRegistry) ?
+                toolRegistry[call.name](args) :
+                { error: `Tool '${call.name}' not found.` };
+            toolCallLog.push({ phase: promptName, tool: call.name, args, result });
+        } catch (e) {
+            result = { error: String(e) };
+            toolCallLog.push({ phase: promptName, tool: call.name || '(unknown)', args: call.arguments, result: result });
         }
-      } catch (e) {
-        toolCallLog.push({ phase: promptName, tool: call.name || '(unknown)', args: call.arguments, result: { error: String(e) } });
-      }
+        toolResultMessages.push({
+            tool_call_id: call.id,
+            role: "tool",
+            name: call.name,
+            content: JSON.stringify(result ?? "null")
+        });
     }
+    
     if (promptName === 'p1') {
-      prompt1History.push({ role: "user", content: baseMessages.slice(-1)[0].content }, { role: "assistant", content });
+      prompt1History.push(
+        { role: "user", content: baseMessages.slice(-1)[0].content },
+        assistantMessage,
+        ...toolResultMessages
+      );
     } else if (promptName === 'p15') {
-      prompt15History.push({ role: "assistant", content });
+      prompt15History.push(assistantMessage, ...toolResultMessages);
     }
+
     handlers ?.onToolRun ?. (toolCallLog);
     handlers ?.onDone ?. (content);
   }).run();
+}
+
+async function runToolCallingCompletion(promptName, messages) {
+    const { temperature, max_tokens } = getAiSettings();
+    const apiKey = getApiKey();
+    const res = await fetchWithRetry("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: "gpt-4o", messages, tools: functionToolSchemas(), tool_choice: "auto", temperature, max_tokens }),
+    });
+    
+    const json = await res.json();
+    const message = json.choices[0]?.message;
+    const content = message?.content || "";
+    const toolCalls = message?.tool_calls || [];
+
+    const assistantMessage = { role: "assistant", content };
+    if (toolCalls.length > 0) {
+        assistantMessage.tool_calls = toolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: { name: tc.function.name, arguments: tc.function.arguments }
+        }));
+    }
+
+    const toolResultMessages = [];
+    for (const call of toolCalls) {
+        let result;
+        try {
+            const args = safeParseJSON(call.function.arguments);
+            result = (call.function.name in toolRegistry) ?
+                toolRegistry[call.function.name](args) :
+                { error: `Tool '${call.function.name}' not found.` };
+            toolCallLog.push({ phase: promptName, tool: call.function.name, args, result });
+        } catch (e) {
+            result = { error: String(e) };
+            toolCallLog.push({ phase: promptName, tool: call.function.name || '(unknown)', args: call.function.arguments, result: result });
+        }
+        toolResultMessages.push({
+            tool_call_id: call.id,
+            role: "tool",
+            name: call.function.name,
+            content: JSON.stringify(result ?? "null")
+        });
+    }
+
+    if (promptName === 'p1c') {
+        confidenceHistory.push(
+            { role: "user", content: messages.slice(-1)[0].content },
+            assistantMessage,
+            ...toolResultMessages
+        );
+    }
+    return content;
+}
+
+async function runSupervisorCheck(messages) {
+    const { temperature } = getAiSettings();
+    const apiKey = getApiKey();
+    const res = await fetchWithRetry("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: "gpt-4o", messages, temperature: temperature - 0.2 < 0 ? 0.1 : temperature - 0.2 , max_tokens: 512, stream: false }),
+    });
+    const json = await res.json();
+    const content = (json.choices[0]?.message?.content || "").trim();
+    supervisorHistory.push({ role: "user", content: messages.slice(-1)[0].content }, { role: "assistant", content });
+    return content;
 }
 
 async function runFinalPrompt(reasoningResult, lastUserMsg, previousTurnContext, handlers) {
@@ -329,24 +493,95 @@ export async function runStreamingFlow(userInput, handlers) {
     previousTurnContext = `[CONTEXT] My current self-perception is: '${prevArchetype}'. After the last interaction, I concluded: '${prevSummary}'`;
   }
 
-  const p1Messages = [{ role: "system", content: firstPrompt }, ...prompt1History, { role: "system", content: `Graph state before this turn: ${exportGraphJson()}` }, { role: "user", content: userInput }];
-  await runPromptStreaming('p1', p1Messages, {
-    onStart: handlers.onPrompt1Start,
-    onDelta: handlers.onPrompt1Delta,
-    onToolRun: handlers.onPrompt1ToolRun,
-    onDone: handlers.onPrompt1Done
-  });
-  const p15Messages = [{ role: "system", content: first5Prompt }, { role: "system", content: `Last user input: ${userInput}` }, { role: "system", content: `Your last internal monologue: ${prompt1History.slice(-1)[0]?.content || ""}` }, { role: "system", content: `Current Graph State:\n${exportGraphJson()}` }, { role: "user", content: "Begin." }];
+  // --- Introspection & Supervisor Loop ---
+  let supervisorFeedback = "";
+  const MAX_ITERATIONS = 10;
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    handlers.onSupervisorUpdate?.(`Running introspection... (Attempt ${i + 1}/${MAX_ITERATIONS})`);
+    
+    const p1Messages = [
+      { role: "system", content: firstPrompt },
+      ...prompt1History,
+      { role: "system", content: `Graph state before this turn: ${exportGraphJson()}` },
+    ];
+    if (supervisorFeedback) {
+      p1Messages.push({ role: "system", content: `[SUPERVISOR FEEDBACK] You must address this before responding: ${supervisorFeedback}` });
+    }
+    p1Messages.push({ role: "user", content: userInput });
+
+    const toolCallCountBeforeP1 = toolCallLog.length;
+    await runPromptStreaming('p1', p1Messages, {
+      onDelta: handlers.onPrompt1Delta,
+      onToolRun: handlers.onPrompt1ToolRun,
+      onDone: handlers.onPrompt1Done
+    });
+    
+    const lastP1Monologue = prompt1History.slice(-2)[0]?.content || ""; 
+    const newToolCalls = toolCallLog.slice(toolCallCountBeforeP1);
+
+    const supervisorReviewMessages = [
+        { role: "system", content: supervisorPrompt },
+        { role: "user", content: `
+**User Query:** "${userInput}"
+**Current Knowledge Graph:**
+${exportGraphJson()}
+**AI's Internal Monologue & Actions (This Attempt):**
+Monologue: ${lastP1Monologue}
+Tool Calls: ${JSON.stringify(newToolCalls, null, 2)}
+**Your Decision?**`
+        }
+    ];
+
+    handlers.onSupervisorUpdate?.(`Supervisor is reviewing... (Attempt ${i + 1})`);
+    await sleep(1000); 
+    const decision = await runSupervisorCheck(supervisorReviewMessages);
+
+    if (decision.toUpperCase() === 'CONTINUE') {
+      handlers.onSupervisorUpdate?.('Supervisor approved. Continuing process.');
+      break;
+    } else {
+      supervisorFeedback = decision;
+      handlers.onSupervisorUpdate?.(`Supervisor provided feedback. Rerunning introspection...\nFeedback: ${supervisorFeedback}`);
+      if (i === MAX_ITERATIONS - 1) {
+          handlers.onSupervisorUpdate?.('Max supervisor iterations reached. Continuing with the current state.');
+      } else {
+          await sleep(2500); 
+      }
+    }
+  }
+
+  await sleep(500);
+  handlers.onConfidenceUpdate?.('Running confidence analysis...');
+  const lastMonologue = prompt1History.slice(-2)[0]?.content || 'No monologue recorded.';
+  const confidenceMessages = [
+      { role: "system", content: confidenceTrackingPrompt },
+      { role: "user", content: `
+**User Input:** "${userInput}"
+**My Internal Monologue:**
+${lastMonologue}
+**My Current Knowledge Graph:**
+${exportGraphJson()}
+Based on this, please adjust the confidence of relevant nodes.`
+      }
+  ];
+  await runToolCallingCompletion('p1c', confidenceMessages);
+  handlers.onConfidenceUpdate?.('Confidence analysis complete.');
+  handlers.onPrompt1ToolRun?.(toolCallLog);
+
+  await sleep(500); 
+  const p15Messages = [{ role: "system", content: first5Prompt }, { role: "system", content: `Last user input: ${userInput}` }, { role: "system", content: `Your last internal monologue: ${prompt1History.slice(-2)[0]?.content || ""}` }, { role: "system", content: `Current Graph State:\n${exportGraphJson()}` }, { role: "user", content: "Begin." }];
   await runPromptStreaming('p15', p15Messages, {
     onStart: handlers.onPrompt15Start,
     onDelta: handlers.onPrompt15Delta,
     onToolRun: handlers.onPrompt15ToolRun,
     onDone: handlers.onPrompt15Done
   });
+  
   const graphAfterTurn = getGraphDict();
   lastGraphDiff = getGraphDiff(graphBeforeTurn, graphAfterTurn);
   sessionStorage.setItem('GRAPH_DIFF', JSON.stringify(lastGraphDiff));
-  const reasoning = [`Phase 1 Monologue:\n${prompt1History.slice(-1)[0]?.content || 'None.'}`, `Phase 1.5 Monologue:\n${prompt15History.slice(-1)[0]?.content || 'None.'}`].join('\n\n---\n\n');
+  const lastP15Monologue = prompt15History.length > 0 ? (prompt15History[prompt15History.length - 1].content || 'None.') : 'None.';
+  const reasoning = [`Phase 1 Monologue (final):\n${prompt1History.slice(-2)[0]?.content || 'None.'}`, `Phase 1.5 Monologue:\n${lastP15Monologue}`].join('\n\n---\n\n');
   
   return new Promise(resolve => {
       runFinalPrompt(reasoning, userInput, previousTurnContext, {
