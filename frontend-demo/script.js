@@ -501,11 +501,19 @@ export async function runStreamingFlow(userInput, handlers) {
     previousTurnContext = `[CONTEXT] My current self-perception is: '${prevArchetype}'. After the last interaction, I concluded: '${prevSummary}'`;
   }
 
-  // --- Introspection & Supervisor Loop ---
-  let supervisorFeedback = "";
-  const MAX_ITERATIONS = 10;
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+// --- Introspection & Supervisor Loop ---
+const originalPrompt1History = [...prompt1History];
+let supervisorFeedback = "";
+let finalMonologue = "";
+const MAX_ITERATIONS = 10;
+
+for (let i = 0; i < MAX_ITERATIONS; i++) {
     handlers.onSupervisorUpdate?.(`Running introspection... (Attempt ${i + 1}/${MAX_ITERATIONS})`);
+    
+    if (i > 0) {
+      prompt1History.length = 0;
+      prompt1History.push(...originalPrompt1History);
+    }
     
     const p1Messages = [
       { role: "system", content: firstPrompt },
@@ -513,7 +521,7 @@ export async function runStreamingFlow(userInput, handlers) {
       { role: "system", content: `Graph state before this turn: ${exportGraphJson()}` },
     ];
     if (supervisorFeedback) {
-      p1Messages.push({ role: "system", content: `[SUPERVISOR FEEDBACK] You must address this before responding: ${supervisorFeedback}` });
+      p1Messages.push({ role: "system", content: `[SUPERVISOR FEEDBACK - REVISION NEEDED] Your previous introspection attempt had issues. Please revise: ${supervisorFeedback}` });
     }
     p1Messages.push({ role: "user", content: userInput });
 
@@ -524,7 +532,24 @@ export async function runStreamingFlow(userInput, handlers) {
       onDone: handlers.onPrompt1Done
     });
     
-    const lastP1Monologue = prompt1History.slice(-2)[0]?.content || ""; 
+    finalMonologue = prompt1History.slice(-2)[0]?.content || "";
+
+    // Run consistency pass after each introspection
+    const p15Messages = [
+      { role: "system", content: first5Prompt }, 
+      { role: "system", content: `Last user input: ${userInput}` }, 
+      { role: "system", content: `Your last internal monologue: ${finalMonologue}` }, 
+      { role: "system", content: `Current Graph State:\n${exportGraphJson()}` }, 
+      { role: "user", content: "Begin." }
+    ];
+    
+    await runPromptStreaming('p15', p15Messages, {
+      onStart: handlers.onPrompt15Start,
+      onDelta: handlers.onPrompt15Delta,
+      onToolRun: handlers.onPrompt15ToolRun,
+      onDone: handlers.onPrompt15Done
+    });
+
     const newToolCalls = toolCallLog.slice(toolCallCountBeforeP1);
 
     const supervisorReviewMessages = [
@@ -534,7 +559,7 @@ export async function runStreamingFlow(userInput, handlers) {
 **Current Knowledge Graph:**
 ${exportGraphJson()}
 **AI's Internal Monologue & Actions (This Attempt):**
-Monologue: ${lastP1Monologue}
+Monologue: ${finalMonologue}
 Tool Calls: ${JSON.stringify(newToolCalls, null, 2)}
 **Your Decision?**`
         }
@@ -560,7 +585,7 @@ Tool Calls: ${JSON.stringify(newToolCalls, null, 2)}
 
   await sleep(500);
   handlers.onConfidenceUpdate?.('Running confidence analysis...');
-  const lastMonologue = prompt1History.slice(-2)[0]?.content || 'No monologue recorded.';
+  const lastMonologue = finalMonologue || 'No monologue recorded.';
   const confidenceMessages = [
       { role: "system", content: confidenceTrackingPrompt },
       { role: "user", content: `
@@ -589,7 +614,7 @@ Based on this, please adjust the confidence of relevant nodes.`
   lastGraphDiff = getGraphDiff(graphBeforeTurn, graphAfterTurn);
   sessionStorage.setItem('GRAPH_DIFF', JSON.stringify(lastGraphDiff));
   const lastP15Monologue = prompt15History.length > 0 ? (prompt15History[prompt15History.length - 1].content || 'None.') : 'None.';
-  const reasoning = [`Phase 1 Monologue (final):\n${prompt1History.slice(-2)[0]?.content || 'None.'}`, `Phase 1.5 Monologue:\n${lastP15Monologue}`].join('\n\n---\n\n');
+  const reasoning = [`Phase 1 Monologue (final approved):\n${finalMonologue || 'None.'}`, `Phase 1.5 Monologue:\n${lastP15Monologue}`].join('\n\n---\n\n');
   
   return new Promise(resolve => {
       runFinalPrompt(reasoning, userInput, previousTurnContext, {
